@@ -1,0 +1,10 @@
+results/
+.snakemake/
+__pycache__/
+*.pyc
+*.log
+*.svg
+*.png
+*:Zone.Identifier
+download.log
+resources/oracle_pdbids.txt

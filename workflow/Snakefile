@@ -1,0 +1,16 @@
+configfile: "config/config.yaml"
+
+MODE = config["mode"]
+OUT  = f"{config['paths']['results_dir']}/{MODE}"     # results/sample or results/full
+
+include: "rules/01_collect.smk"
+include: "rules/02_download.smk"
+include: "rules/03_extract.smk"
+include: "rules/04_features.smk"
+include: "rules/05_cluster.smk"
+include: "rules/06_ml.smk"
+include: "rules/07_validate.smk"
+
+rule all:
+    input:
+        f"{OUT}/reproduction_report.txt"

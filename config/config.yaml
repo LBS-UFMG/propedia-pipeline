@@ -1,0 +1,55 @@
+machine:
+  cif_dir:      "/home/arcanjomjr/new_propedia_files/cif"     # where CIFs download to (needs ~50GB)
+  oracle_csv:   "/home/arcanjomjr/old_propedia/propedia26_v15.csv"  # reference DB for validation
+  cocada_dir:   "~/COCaDA"                                     # cloned COCaDA repo
+  signa_dir:    "~/signa/Signa"                                # cloned SIGNA (dir with signa.py)
+  ifeature_dir: "~/iFeature"                                   # cloned iFeature repo
+  ml_train_dir: "~/signa/docs/case_studies/cs4/csv"            # therapeutic-class train/test sets
+
+# ---- run mode: "sample" (fast, validates) or "full" (whole snapshot) ----
+mode: "sample"
+sample:
+  size: 300
+
+# ---- data snapshot ----
+pdb_snapshot_date: "2025-09-08"
+
+# ---- selection / cutoffs ----
+cutoffs:
+  interaction_distance_A: 6.0
+  bsa_threshold_A2: 0.0
+  peptide_len_min: 2
+  peptide_len_max: 50
+  protein_len_min: 51
+  max_residues_per_structure: 10000
+
+collection:
+  strategy: "prefilter-permissive"
+  protein_polymer_type: "Protein"
+  min_polymer_chains: 2
+
+download:
+  workers: 16
+  max_retries: 4
+  timeout_seconds: 60
+
+prodigy:
+  distance_cutoff: 6.0
+  temperature: 25.0
+
+cocada:
+  ph: 7.4
+  version: "v1.6"
+
+signatures:
+  acsm_cutoff_limit: 10
+  acsm_cutoff_step: 0.2
+  acsm_cumulative: true
+  min_signature_len: 3
+  ifeature_descriptors: [AAC, DPC, DDE, GAAC, GDPC, GTPC, CTDC, CTDT, CTDD]
+
+ml:
+  classes: [AAP, ABP, ACP, AIP, QSP, SBP]
+
+paths:
+  results_dir: "results"
