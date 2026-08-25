@@ -207,3 +207,22 @@ assigns the descriptive text to the wrong chain (e.g. 1A37/1A38 put the peptide'
 description on the protein side). Reproducing that fallback would replace correct,
 informative descriptions with constants or noise, so we keep the clean values and
 document the divergence (same posture as extinction coefficients / FreeSASA).  
+
+## Assembly — the reproduced Propedia CSV
+workflow/scripts/assemble.py joins every feature TSV into the final ;-delimited
+propedia.csv. Master row set = extracted pairs passing BSA>0 (ids present in
+surface.tsv), sorted by id; left-join all features, blank where missing.
+Columns are the exact v15 order (71) + two additive organism columns
+(PEPTIDE_ORGANISM, PROTEIN_ORGANISM). Wired as rule 'assemble' (08_assemble.smk).
+
+Sample validation (check_assemble.py): 648 rows x 73 cols; first-71 header EXACT
+match vs v15 (incl. the U+02DA degree glyph). Column alignment on the 644 v15
+overlap: PDB_ID / chains / CLASSIFICATION / DEPOSITION_DATE / RESOLUTION /
+STRUCTURE_METHOD / TITLE / peptide+protein Formula & TotalAtoms all 100%;
+organism 98.6% (documented v15 quirks); SEQ/SIZE 82.6% peptide / 95.8% protein
+(terminal-X convention). ML classes (AAP/ABP/ACP/AIP/QSP/SBP) and legacy clusters
+(binding-/interface-/sequence-cluster, is_leader, leader_id) intentionally blank
+pending their stages. seq100_clusters grouping is reproduced but its labels are
+DB-global, so that column validates on the full run, not the sample. 648 vs 644
+overlap = 4 borderline pairs we include beyond v15's slice of these PDBs;
+reconciled at full scale.
