@@ -256,3 +256,17 @@ documented, not chased.
 
 Note: SVC(probability=True) is deprecated (sklearn>=1.9, removed in 1.11) -> pin
 sklearn<1.11 or migrate the SVM to CalibratedClassifierCV before upgrading.
+
+## Legacy clusters — INHERITED (not recomputed)
+sequence-cluster / interface-cluster / binding-cluster / is_leader / leader_id are
+read from the precomputed clusters_v15/ files (legacy_clusters.py), not recomputed:
+- sequence/interface/binding: label sits on each cluster's FIRST member only (the
+  representative); all other members blank. Validated first-member rule = 100% on
+  real data. These are frozen tool outputs (Hammock/MUSTANG/ProBiS) inherited from v1.
+- is_leader/leader_id: from redundant.tsv (full-complex redundancy grouping). Leader
+  is NOT a simple alphabetical pick (~87.5%), so not reliably recomputable -> inherited.
+Consequence: NEW entries in a future update are unclustered until the tools are re-run.
+Update path (future work): recompute redundancy from pairs.tsv (no tools needed) and
+assign new entries to existing sequence/binding clusters via the BLAST/ProBiS machinery
+already in the pipeline; full re-clustering (re-running all three tools) is a heavier
+separate option that also changes labels each release.

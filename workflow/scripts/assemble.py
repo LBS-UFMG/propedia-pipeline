@@ -3,8 +3,7 @@
 Master row set = extracted pairs that pass the BSA>0 filter (i.e. ids present in
 surface.tsv), matching v15's inclusion criteria. Left-join every feature onto it;
 missing cells are blank. Columns are emitted in the exact v15 order, followed by
-the two additive organism columns. Columns whose source isn't built yet
-(ML classes, legacy clusters) are intentionally blank.
+the two additive organism columns.
 """
 import csv
 import sys
@@ -72,8 +71,9 @@ PRODIGY_MAP = {
 META_COLS = {"CLASSIFICATION", "DEPOSITION_DATE", "RESOLUTION", "STRUCTURE_METHOD",
              "TITLE", "organism", "PEPTIDE_DESC", "PROTEIN_DESC"}
 THERAP_COLS = {"AAP", "ABP", "ACP", "AIP", "QSP", "SBP"}
-BLANK_COLS = {"binding-cluster", "interface-cluster", "is_leader", "leader_id",
-              "sequence-cluster"}
+LEGACY_COLS = {"sequence-cluster", "interface-cluster", "binding-cluster",
+               "is_leader", "leader_id"}
+BLANK_COLS = set()   # every v15 column is now sourced
 
 
 def load_tsv(path):
@@ -94,13 +94,15 @@ def clean(v):
 
 
 def value(col, eid, pair, surface, prodigy, interface, metadata, cnr,
-          physchem, therapeutic):
+          physchem, therapeutic, legacy):
     if col == "id":
         return eid
     if col in BLANK_COLS:
         return ""
     if col in THERAP_COLS:
         return (therapeutic.get(eid) or {}).get(col, "")
+    if col in LEGACY_COLS:
+        return (legacy.get(eid) or {}).get(col, "")
     if col in PAIRS_MAP:
         return pair.get(PAIRS_MAP[col], "")
     if col in SURFACE_COLS:
@@ -129,6 +131,7 @@ def main():
     cnr = load_tsv(inp.clusters)
     physchem = load_physchem(inp.physchem)
     therapeutic = load_tsv(inp.therapeutic)
+    legacy = load_tsv(inp.legacy)
 
     # master = extracted pairs that passed BSA>0 (present in surface), sorted by id
     kept = [r for r in pairs if r["id"] in surface]
@@ -140,7 +143,7 @@ def main():
         for r in kept:
             eid = r["id"]
             row = [clean(value(c, eid, r, surface, prodigy, interface,
-                               metadata, cnr, physchem, therapeutic))
+                               metadata, cnr, physchem, therapeutic, legacy))
                    for c in cols]
             fh.write(";".join(row) + "\n")
     print(f"DONE assembled {len(kept)} rows x {len(cols)} cols", file=sys.stderr)
