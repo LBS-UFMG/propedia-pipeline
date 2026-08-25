@@ -125,3 +125,28 @@ Sample: 651 processed, 648 pass BSA>0. Validation vs v15 (NACCESS):
   BSA correlation r=1.000 ; mean BSA ours=605.5 v15=601.4 (0.7% offset).
 => FreeSASA reproduces NACCESS surface areas essentially exactly, AND is
 redistributable where NACCESS is not — net reproducibility improvement (answers Reviewer 1).
+
+## Physicochemical extras (formula, atoms, extinction) — ADDED
+Four v15 columns now emitted per chain: Formula, TotalAtoms, ExtCoeff_Disulfide,
+ExtCoeff_NoDisulfide. Validated on the 300-ID sample (644 pairs, 1288 chains) with
+check_physchem_extras.py.
+
+- Formula / TotalAtoms: 1288/1288 (100%). Computed as the SUM of per-residue atomic
+  compositions (free amino acid minus one water) with NO added terminal water — this
+  no-water convention is what reproduces v15 exactly (adding H2O overshoots by 3 atoms).
+  Computed on the X-stripped sequence, like all physchem.
+
+- Extinction coefficients: emitted as the standard ExPASy/Biopython values
+  (reduced = Tyr*1490 + Trp*5500 ; cystine = reduced + (nCys//2)*125). These are a
+  DELIBERATE CORRECTION of v15, which used a non-standard formula:
+      v15 NoDisulfide = base + nCys*125      (adds 125 per FREE cysteine — non-physical;
+                                              reduced Cys do not absorb at 280 nm)
+      v15 Disulfide   = base + (nCys*125)//2 (correct cystine value but not floored to
+                                              whole pairs; differs from ours by 62 only
+                                              when nCys is odd)
+  The reduced-Cys +125 term in v15's NoDisulfide is almost certainly a bug. We ship the
+  correct values (same rationale as replacing NACCESS with FreeSASA). Validation confirms
+  the divergence is fully understood: exact-match is low (45%/67%, only Cys-free chains),
+  but 100% of the differences equal exactly the v15 term above — i.e. our counts match
+  v15 and only the formula differs. The public release should note this correction so the
+  two columns changing vs the online v15 is expected, not a regression.

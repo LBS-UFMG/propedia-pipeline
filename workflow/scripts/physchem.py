@@ -6,9 +6,32 @@ from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
 STD = set("ACDEFGHIKLMNPQRSTVWY")
 
+# Residue atomic composition = free amino acid MINUS one water (peptide-bond
+# condensation). v15's Formula/TotalAtoms are the SUM of residue compositions
+# with NO added terminal water (verified exactly against v15 for peptide+protein).
+RES = {
+    'G': (2, 3, 1, 1, 0), 'A': (3, 5, 1, 1, 0), 'S': (3, 5, 1, 2, 0),
+    'P': (5, 7, 1, 1, 0), 'V': (5, 9, 1, 1, 0), 'T': (4, 7, 1, 2, 0),
+    'C': (3, 5, 1, 1, 1), 'L': (6, 11, 1, 1, 0), 'I': (6, 11, 1, 1, 0),
+    'N': (4, 6, 2, 2, 0), 'D': (4, 5, 1, 3, 0), 'Q': (5, 8, 2, 2, 0),
+    'K': (6, 12, 2, 1, 0), 'E': (5, 7, 1, 3, 0), 'M': (5, 9, 1, 1, 1),
+    'H': (6, 7, 3, 1, 0), 'F': (9, 9, 1, 1, 0), 'R': (6, 12, 4, 1, 0),
+    'Y': (9, 9, 1, 2, 0), 'W': (11, 10, 2, 1, 0),
+}  # (C, H, N, O, S)
+
 
 def clean(seq):
     return "".join(c for c in seq.upper() if c in STD)
+
+
+def formula_atoms(seq):
+    """Return (formula_string, total_atom_count) for a cleaned sequence."""
+    C = H = N = O = S = 0
+    for aa in seq:
+        c, h, n, o, s = RES[aa]
+        C += c; H += h; N += n; O += o; S += s
+    formula = f"C{C}H{H}N{N}O{O}" + (f"S{S}" if S else "")
+    return formula, C + H + N + O + S
 
 
 def aliphatic_index(seq):
@@ -39,6 +62,8 @@ def props(seq):
     pa = ProteinAnalysis(c)
     pos = sum(c.count(x) for x in "KR")   # simple charged-residue tallies
     neg = sum(c.count(x) for x in "DE")
+    ext_reduced, ext_cystine = pa.molar_extinction_coefficient()  # (NoDisulfide, Disulfide)
+    formula, atoms = formula_atoms(c)
     return {
         "clean_len": len(c),
         "stripped": len(seq) - len(c),
@@ -50,6 +75,10 @@ def props(seq):
         "Hydrophobic": hydrophobic_percent(c),
         "Pos": pos,
         "Neg": neg,
+        "ExtCoeff_Disulfide": ext_cystine,
+        "ExtCoeff_NoDisulfide": ext_reduced,
+        "Formula": formula,
+        "TotalAtoms": atoms,
     }
 
 
@@ -58,7 +87,8 @@ def main():
     header = rows[0].rstrip("\n").split("\t")
     idx = {h: i for i, h in enumerate(header)}
     out_cols = ["id", "chain_type", "clean_len", "stripped", "MW", "pI",
-                "GRAVY", "Instability", "Aliphatic", "Hydrophobic", "Pos", "Neg"]
+                "GRAVY", "Instability", "Aliphatic", "Hydrophobic", "Pos", "Neg",
+                "ExtCoeff_Disulfide", "ExtCoeff_NoDisulfide", "Formula", "TotalAtoms"]
     with open(snakemake.output.physchem, "w") as fh:      # noqa: F821
         fh.write("\t".join(out_cols) + "\n")
         for line in rows[1:]:
