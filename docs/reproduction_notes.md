@@ -226,3 +226,33 @@ pending their stages. seq100_clusters grouping is reproduced but its labels are
 DB-global, so that column validates on the full run, not the sample. 648 vs 644
 overlap = 4 borderline pairs we include beyond v15's slice of these PDBs;
 reconciled at full scale.
+
+## Therapeutic-class scoring (AAP/ABP/ACP/AIP/QSP/SBP) — ADDED
+Six per-peptide probability columns.
+- Bake-off (run_ml.py): six sklearn models (SVM, GradientBoosting, LogisticRegression,
+  kNN, NaiveBayes, NeuralNet) trained per class on the propedia26-sm `new` train TSVs,
+  scored on the held-out test_main set. StandardScaler in-pipeline (fit on train only,
+  no leakage). Default hyperparameters (proof-of-principle, not optimized). Full metric
+  table (all models x classes, incl. AUC) -> ml_report.tsv (Supplementary); GB featured
+  in main text.
+- Per-class winner selected by lowest test-set BRIER SCORE (probability quality), NOT AUC,
+  because the shipped columns are probabilities (a model can rank well yet be poorly
+  calibrated). Winners: AAP SVM, ABP SVM, ACP GB, AIP GB, QSP GB, SBP GB.
+- Scoring (therapeutic_scoring.py): the winning model per class predicts a probability for
+  every Propedia peptide. Features RECOMPUTED via the same iFeature 1248-vector as the
+  signature stage (train+propedia in one pass) so ranking and scoring share a feature space.
+
+Selection principle: models chosen to make the shipped columns best on their own merits
+(held-out Brier/AUC), NOT to match v15 — v15's exact per-class models/training are
+undetermined (not in the repos; only Suppl. Tables S1-S7 would settle it).
+
+Validation vs v15 (proof-of-principle: method, not exact numbers). Per-peptide Pearson r
+on the 644 sample overlap: AAP 0.83, ACP 0.83, QSP 0.73, SBP 0.73 (reproduced); ABP 0.52
+and AIP 0.07 DIVERGE. ABP: SVM is best on our held-out test by both Brier (0.052) and AUC
+(0.979), so the lower v15 correlation is a v15-vintage difference (different model or the
+old training set), not a selection artifact. AIP: the only imbalanced training set
+(1258/1887); no model tracks v15 (likely v15 balancing, or the new/old split). Both
+documented, not chased.
+
+Note: SVC(probability=True) is deprecated (sklearn>=1.9, removed in 1.11) -> pin
+sklearn<1.11 or migrate the SVM to CalibratedClassifierCV before upgrading.

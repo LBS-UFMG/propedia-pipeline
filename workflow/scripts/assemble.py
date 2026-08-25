@@ -71,8 +71,8 @@ PRODIGY_MAP = {
 }
 META_COLS = {"CLASSIFICATION", "DEPOSITION_DATE", "RESOLUTION", "STRUCTURE_METHOD",
              "TITLE", "organism", "PEPTIDE_DESC", "PROTEIN_DESC"}
-BLANK_COLS = {"AAP", "ABP", "ACP", "AIP", "QSP", "SBP",
-              "binding-cluster", "interface-cluster", "is_leader", "leader_id",
+THERAP_COLS = {"AAP", "ABP", "ACP", "AIP", "QSP", "SBP"}
+BLANK_COLS = {"binding-cluster", "interface-cluster", "is_leader", "leader_id",
               "sequence-cluster"}
 
 
@@ -93,11 +93,14 @@ def clean(v):
     return str(v).replace(";", ",").replace("\t", " ").replace("\n", " ").replace("\r", "")
 
 
-def value(col, eid, pair, surface, prodigy, interface, metadata, cnr, physchem):
+def value(col, eid, pair, surface, prodigy, interface, metadata, cnr,
+          physchem, therapeutic):
     if col == "id":
         return eid
     if col in BLANK_COLS:
         return ""
+    if col in THERAP_COLS:
+        return (therapeutic.get(eid) or {}).get(col, "")
     if col in PAIRS_MAP:
         return pair.get(PAIRS_MAP[col], "")
     if col in SURFACE_COLS:
@@ -125,6 +128,7 @@ def main():
     metadata = load_tsv(inp.metadata)
     cnr = load_tsv(inp.clusters)
     physchem = load_physchem(inp.physchem)
+    therapeutic = load_tsv(inp.therapeutic)
 
     # master = extracted pairs that passed BSA>0 (present in surface), sorted by id
     kept = [r for r in pairs if r["id"] in surface]
@@ -136,7 +140,8 @@ def main():
         for r in kept:
             eid = r["id"]
             row = [clean(value(c, eid, r, surface, prodigy, interface,
-                               metadata, cnr, physchem)) for c in cols]
+                               metadata, cnr, physchem, therapeutic))
+                   for c in cols]
             fh.write(";".join(row) + "\n")
     print(f"DONE assembled {len(kept)} rows x {len(cols)} cols", file=sys.stderr)
 

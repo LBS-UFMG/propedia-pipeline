@@ -50,6 +50,8 @@ signatures:
 
 ml:
   classes: [AAP, ABP, ACP, AIP, QSP, SBP]
+  train_dir: "~/propedia26-sm/data/csm-peptides/features/new/train"
+  test_dir:  "~/propedia26-sm/data/csm-peptides/features/new/test"
 
 paths:
   results_dir: "results"
