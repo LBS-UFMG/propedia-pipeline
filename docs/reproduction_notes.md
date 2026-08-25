@@ -150,3 +150,25 @@ check_physchem_extras.py.
   but 100% of the differences equal exactly the v15 term above — i.e. our counts match
   v15 and only the formula differs. The public release should note this correction so the
   two columns changing vs the online v15 is expected, not a regression.
+  
+## Interface residues — ADDED (6 A atom-atom, validated)
+New column `interface_residues`: protein residues (author resseq, ascending,
+comma-joined) with any atom <=6 A from any peptide atom, computed on the extracted
+two-chain PDB. Script: workflow/scripts/interface_residues.py.
+
+Sample validation (642 entries with a v15 list): 585/642 exact (91.1%).
+A cutoff sweep pins v15's method to exactly 6.0 A — it is a sharp peak that
+collapses on both sides (5.5 A -> 11.7%, 6.05 A -> 69.5%, 6.5 A -> 10.0%), so our
+6 A implementation is correct and the residual 9% are v15 inconsistencies, not a
+cutoff to adopt. The mismatches split as:
+  - ~38 pep_shorter: v15 peptide includes non-AA cap/statine/ligand residues
+    (e.g. 1APT/1APU/1APV/1APW) whose atoms reach protein residues our AA-only
+    peptide does not — the same terminal-X convention as the sequence stage.
+  - ~10 extra_only: v15 excludes a few high-numbered modified protein residues we
+    keep (e.g. 1AQC, 1AWT) — mirror image, same non-standard-residue family.
+  - a few equal-size cases (1AB9, 1B3F, 1C5W/X, 1CM4, 1CWE) where every residue
+    v15 lists is >6 A in our PDB (up to 9.85 A in 1CM4) — v15 used a looser/other
+    threshold for these; not reproducible under a consistent 6 A rule and not
+    desirable to reproduce.
+v15 also blanks ~5.9% of entries DB-wide despite a valid <=6 A contact (likely a
+defect); we emit the correct non-empty list there.  

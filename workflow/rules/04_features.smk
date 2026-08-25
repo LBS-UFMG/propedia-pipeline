@@ -82,3 +82,14 @@ rule freesasa:
         bsa_threshold = config["cutoffs"]["bsa_threshold_A2"],
     script:
         "../scripts/run_freesasa.py"
+		
+rule interface:
+    input:
+        pairs = f"{OUT}/pairs.tsv",
+    output:
+        interface = f"{OUT}/interface.tsv",
+    params:
+        pdb_dir = f"{OUT}/pdb",
+        cutoff  = config["cutoffs"]["interaction_distance_A"],
+    script:
+        "../scripts/interface_residues.py"		
