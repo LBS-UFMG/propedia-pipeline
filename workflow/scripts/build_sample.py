@@ -1,5 +1,6 @@
 """Pick a sample of oracle (v15) PDB IDs that are already downloaded,
 so we can validate extraction against the existing database right now."""
+import csv
 import os
 import sys
 
@@ -11,8 +12,14 @@ def shard_path(cif_dir, pid):
 
 def main():
     p = snakemake.params                                   # noqa: F821
-    oracle = [l.strip().upper() for l in open(snakemake.input.oracle)  # noqa: F821
-              if l.strip()]
+    # oracle is the ;-delimited v15 table; PDB IDs live in the PDB_ID column
+    seen, oracle = set(), []
+    with open(snakemake.input.oracle) as fh:               # noqa: F821
+        for row in csv.DictReader(fh, delimiter=";"):
+            pid = (row.get("PDB_ID") or "").strip().upper()
+            if pid and pid not in seen:
+                seen.add(pid)
+                oracle.append(pid)
     sample = []
     for pid in oracle:
         if os.path.exists(shard_path(p.cif_dir, pid)):

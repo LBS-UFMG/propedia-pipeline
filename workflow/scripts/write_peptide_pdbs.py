@@ -25,6 +25,11 @@ def main():
                         ofh.write(line)
             ofh.write("END\n")
         n += 1
+
+    # create the marker Snakemake declared as this rule's output
+    with open(snakemake.output.marker, "w") as fh:   # noqa: F821
+        fh.write(f"wrote {n} peptide-only PDBs\n")
+
     print(f"wrote {n} peptide-only PDBs to {p.pep_pdb_dir}", file=sys.stderr)
 
 

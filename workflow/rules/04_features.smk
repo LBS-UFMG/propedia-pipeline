@@ -71,7 +71,7 @@ rule signa:
         cumulative   = config["signatures"]["acsm_cumulative"],
     script:
         "../scripts/run_signa.py"
-		
+
 rule freesasa:
     input:
         pairs = f"{OUT}/pairs.tsv",
@@ -81,4 +81,4 @@ rule freesasa:
         pdb_dir       = f"{OUT}/pdb",
         bsa_threshold = config["cutoffs"]["bsa_threshold_A2"],
     script:
-        "../scripts/run_freesasa.py"		
+        "../scripts/run_freesasa.py"
