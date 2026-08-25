@@ -1,5 +1,7 @@
 """Throttled PRODIGY runner: bounded parallelism, per-call timeout, real error
-logging. Safe to run without starving the machine."""
+logging. Paths, distance cutoff and temperature come from Snakemake, so this
+works unchanged in both sample and full mode. The worker/timeout throttle stays
+local (it's the safeguard that prevented the OOM/IO crash), tune if needed."""
 import csv, os, re, subprocess, sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -16,13 +18,13 @@ LABELS = {
     "Predicted binding affinity (kcal.mol-1)": "dg",
     "Predicted dissociation constant (M) at 25.0": "kd",
 }
-OUT_COLS = ["id","dg","kd","n_intermolecular","n_charged_charged","n_charged_polar",
-            "n_charged_apolar","n_polar_polar","n_apolar_polar","n_apolar_apolar",
-            "nis_apolar","nis_charged"]
+OUT_COLS = ["id", "dg", "kd", "n_intermolecular", "n_charged_charged",
+            "n_charged_polar", "n_charged_apolar", "n_polar_polar",
+            "n_apolar_polar", "n_apolar_apolar", "nis_apolar", "nis_charged"]
 NUM = re.compile(r"(-?\d+\.?\d*(?:e-?\d+)?)")
-PDB_DIR = "results/sample/pdb"
-MAX_WORKERS = 4          # <= the throttle that prevents the crash
-TIMEOUT = 120
+
+MAX_WORKERS = 4          # throttle that prevents the OOM/IO crash; tune if needed
+TIMEOUT = 120            # per-call seconds
 
 
 def parse(text):
@@ -31,25 +33,28 @@ def parse(text):
         for label, key in LABELS.items():
             if label in line and ":" in line:
                 m = NUM.search(line.split(":", 1)[1])
-                if m: vals[key] = m.group(1)
+                if m:
+                    vals[key] = m.group(1)
                 break
     return vals
 
 
 def run_one(args):
-    eid, pep, prot = args
-    path = os.path.join(PDB_DIR, f"{eid}.pdb")
+    # everything run_one needs is passed in — no module globals, no snakemake,
+    # so it is safe under both 'fork' and 'spawn' process-pool start methods.
+    eid, pep, prot, pdb_dir, cutoff, temperature = args
+    path = os.path.join(pdb_dir, f"{eid}.pdb")
     if not os.path.exists(path):
         return eid, None, "missing_pdb"
     try:
-        p = subprocess.run(["prodigy", path, "--selection", pep, prot,
-                            "--distance-cutoff", "6.0",
-                            "--temperature", "25"],
-                           capture_output=True, text=True, timeout=TIMEOUT)
-        v = parse(p.stdout + p.stderr)
+        proc = subprocess.run(["prodigy", path, "--selection", pep, prot,
+                               "--distance-cutoff", str(cutoff),
+                               "--temperature", str(temperature)],
+                              capture_output=True, text=True, timeout=TIMEOUT)
+        out = proc.stdout + proc.stderr
+        v = parse(out)
         if "dg" not in v:
-            reason = "no_contacts" if "No contacts" in (p.stdout+p.stderr) else "no_dg"
-            return eid, None, reason
+            return eid, None, "no_contacts" if "No contacts" in out else "no_dg"
         v["id"] = eid
         return eid, v, "ok"
     except subprocess.TimeoutExpired:
@@ -59,12 +64,19 @@ def run_one(args):
 
 
 def main():
-    pairs = list(csv.DictReader(open("results/sample/pairs.tsv"), delimiter="\t"))
-    jobs = [(r["id"], r["pep_chain"], r["prot_chain"]) for r in pairs]
-    ok = 0
-    reasons = {}
-    with open("results/sample/prodigy.tsv", "w") as fh, \
-         open("results/sample/prodigy_errors.tsv", "w") as ef:
+    pairs_path = snakemake.input.pairs           # noqa: F821
+    out_path   = snakemake.output.prodigy        # noqa: F821
+    err_path   = snakemake.output.errors         # noqa: F821
+    pdb_dir     = snakemake.params.pdb_dir          # noqa: F821
+    cutoff      = snakemake.params.distance_cutoff  # noqa: F821
+    temperature = snakemake.params.temperature      # noqa: F821
+
+    pairs = list(csv.DictReader(open(pairs_path), delimiter="\t"))
+    jobs = [(r["id"], r["pep_chain"], r["prot_chain"], pdb_dir, cutoff, temperature)
+            for r in pairs]
+
+    ok, reasons = 0, {}
+    with open(out_path, "w") as fh, open(err_path, "w") as ef:
         fh.write("\t".join(OUT_COLS) + "\n")
         ef.write("id\treason\n")
         with ProcessPoolExecutor(max_workers=MAX_WORKERS) as ex:
@@ -72,7 +84,8 @@ def main():
             for i, fut in enumerate(as_completed(futs), 1):
                 eid, v, status = fut.result()
                 if status == "ok":
-                    fh.write("\t".join(v.get(c, "") for c in OUT_COLS) + "\n"); ok += 1
+                    fh.write("\t".join(v.get(c, "") for c in OUT_COLS) + "\n")
+                    ok += 1
                 else:
                     ef.write(f"{eid}\t{status}\n")
                     reasons[status] = reasons.get(status, 0) + 1
