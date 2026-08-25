@@ -93,3 +93,13 @@ rule interface:
         cutoff  = config["cutoffs"]["interaction_distance_A"],
     script:
         "../scripts/interface_residues.py"		
+
+rule metadata:
+    input:
+        pairs = f"{OUT}/pairs.tsv",
+    output:
+        metadata = f"{OUT}/metadata.tsv",
+    params:
+        cif_dir = config["machine"]["cif_dir"],
+    script:
+        "../scripts/metadata.py"

@@ -171,4 +171,39 @@ cutoff to adopt. The mismatches split as:
     threshold for these; not reproducible under a consistent 6 A rule and not
     desirable to reproduce.
 v15 also blanks ~5.9% of entries DB-wide despite a valid <=6 A contact (likely a
-defect); we emit the correct non-empty list there.  
+defect); we emit the correct non-empty list there.
+
+## PDB metadata (CIF header) — ADDED
+Eight v15 columns from the CIF header, plus two additive organism columns.
+Script: workflow/scripts/metadata.py (parses each CIF once per PDB id, cached).
+Sample validation (644 pairs):
+  CLASSIFICATION   644/644 (100%)   _struct_keywords.pdbx_keywords
+  DEPOSITION_DATE  644/644 (100%)   _pdbx_database_status.recvd_initial_deposition_date
+  RESOLUTION       644/644 (100%)   _refine.ls_d_res_high (blank for NMR)
+  STRUCTURE_METHOD 644/644 (100%)   _exptl.method
+  TITLE            644/644 (100%)   _struct.title (verbatim, case preserved)
+  organism         635/644 (98.6%)
+
+organism: a single per-pair value in v15 = the PROTEIN chain's entity source
+organism (uppercased), resolved via _entity_poly.pdbx_strand_id -> entity ->
+_entity_src_{gen,nat} / _pdbx_entity_src_syn. NOTE: v15's exact source-selection
+rule is undetermined — it is neither "first entity" nor strictly the protein
+(counter-examples both ways: 1FC2 reports the peptide's organism, 1BBR the
+protein's). The protein-chain rule reproduces 98.6% on the sample; the 9 misses
+are v15 quirks (1CJQ/1CJR: synthetic thrombin tagged "SYNTHETIC CONSTRUCT";
+1D3E/1D3I: rhinovirus coat protein where v15 recorded the human host). Not
+reproduced further; not desirable to chase.
+
+ADDED (beyond v15): PEPTIDE_ORGANISM and PROTEIN_ORGANISM resolve each chain's
+organism separately. v15 carried only one per-pair organism, which is misleading
+for cross-species complexes (thrombin+hirudin, MHC+viral peptide, protein+synthetic
+inhibitor). No v15 counterpart to validate against.
+
+PEPTIDE_DESC / PROTEIN_DESC = _entity.pdbx_description for the chain's entity.
+DELIBERATELY kept as the real entity descriptions (peptide 63.2%, protein 69.4%
+vs v15). v15's DESC is unreliable: it uses the entity description when present but
+falls back to the literal constants "Peptide"/"Protein" otherwise, and sometimes
+assigns the descriptive text to the wrong chain (e.g. 1A37/1A38 put the peptide's
+description on the protein side). Reproducing that fallback would replace correct,
+informative descriptions with constants or noise, so we keep the clean values and
+document the divergence (same posture as extinction coefficients / FreeSASA).  
