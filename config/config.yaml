@@ -55,3 +55,6 @@ ml:
 
 paths:
   results_dir: "results"
+  
+clusters:
+  legacy_dir: "~/propedia26-sm/data/clusters_v15"
