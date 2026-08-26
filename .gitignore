@@ -1,10 +1,23 @@
-results/
-.snakemake/
-__pycache__/
+# scratch drivers / checkers (run standalone, never part of the DAG)
+/run_*.py
+/check_*.py
+/diag_*.py
+/build_sample_csv.py
+# stray cutoff-sweep outputs
+/*:*A
+
+# snakemake internals & generated outputs
+/.snakemake/
+/results/
+/resources/
+**/__pycache__/
+# generated artifacts
+/download.log
+/pipeline_dag.svg
+/pipeline_rulegraph.png
+# windows/NTFS junk
+*:Zone.Identifier
+
+# also (restored from previous .gitignore)
 *.pyc
 *.log
-*.svg
-*.png
-*:Zone.Identifier
-download.log
-resources/oracle_pdbids.txt
