@@ -104,7 +104,7 @@ def process(pid, p, io, parser):
 def main():
     p = snakemake.params                                   # noqa: F821
     os.makedirs(p.pdb_out_dir, exist_ok=True)
-    sample = [l.strip() for l in open(snakemake.input.sample) if l.strip()]  # noqa: F821
+    sample = [l.strip() for l in open(snakemake.input.ids) if l.strip()]  # noqa: F821
     parser = MMCIFParser(QUIET=True)
     io = PDBIO()
     all_rows, stats = [], {}

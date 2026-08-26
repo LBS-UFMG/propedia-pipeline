@@ -8,6 +8,7 @@ rule assemble:
         metadata  = f"{OUT}/metadata.tsv",
         clusters    = f"{OUT}/cnr_clusters.tsv",
         therapeutic = f"{OUT}/therapeutic.tsv",
+        legacy      = f"{OUT}/legacy_clusters.tsv",
     output:
         csv = f"{OUT}/propedia.csv",
     script:
