@@ -11,6 +11,7 @@ include: "rules/05_cluster.smk"
 include: "rules/06_ml.smk"
 include: "rules/07_validate.smk"
 include: "rules/08_assemble.smk"
+include: "rules/09_multipro.smk"
 
 rule all:
     input:
