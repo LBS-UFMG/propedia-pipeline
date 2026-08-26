@@ -15,4 +15,6 @@ include: "rules/09_multipro.smk"
 
 rule all:
     input:
+        f"{OUT}/propedia.csv",
+        f"{OUT}/multipro_final.csv",
         f"{OUT}/reproduction_report.txt"
