@@ -270,3 +270,79 @@ Update path (future work): recompute redundancy from pairs.tsv (no tools needed)
 assign new entries to existing sequence/binding clusters via the BLAST/ProBiS machinery
 already in the pipeline; full re-clustering (re-running all three tools) is a heavier
 separate option that also changes labels each release.
+
+## Multipro dataset — Phase 1 (grouping + derivable columns)
+multipro_extract.py groups pep-pro pairs by (PDB, peptide chain); an entry is
+Multipro when the peptide contacts >=2 protein chains. cluster_id = PDB-pepchain,
+items = constituent pep-pro ids, plus per-chain columns colon-joined in protein-
+chain order (PROTEIN_CHAIN/SIZE/SEQ) and single peptide columns. Master set =
+pairs passing BSA>0 (= the pep-pro CSV rows).
+
+Sample validation vs v15 multipro_v4.csv (138 overlap): cluster_ids 99.3%
+present, count 97.8%, items 97.8%. Mismatches are all v15-has-a-chain-we-lack
+(e.g. 1BBR-F missing chain K) -- the same pep-pro-level BSA>0 / terminal-X
+convention dropping a constituent pair, propagated into the grouping. Not a
+grouping error.
+
+Phase 2 (TODO): recomputed features on the assembled multi-chain complex --
+ASA/BSA (single, on the combined complex), and per-chain contacts / PRODIGY
+affinity+Kd (colon-joined, recomputed in multi-chain context). Colon-joined
+physchem, metadata, and interface-residue columns are derivable from the pep-pro
+outputs and can be joined in a Multipro assembly step alongside Phase 2.
+
+## Multipro surface (Phase 2b) + BPepA fix (also pep-pro)
+Surface recomputed on the assembled multi-chain PDB (multipro_surface.py), same
+FreeSASA path as pep-pro. FreeSASA configured to match NACCESS: NACCESS radii
+(Classifier.getStandardClassifier("naccess")) + Lee-Richards, n-slices=100.
+
+Buried-area formula corrected in BOTH run_freesasa.py and multipro_surface.py to
+the original method (confirmed against the peer's bsa_utils.calculate_bsa):
+  BProA = ASA_Protein(isolated) - protein_in_complex   (per-chain ASA from the
+          complex calc, summed over protein chains)
+  BPepA = ASA_Peptide(isolated) - peptide_in_complex
+  BSA   = (BProA + BPepA) / 2
+(Previously BProA/BPepA used a wrong ΔASA proxy; BSA was already correct. The old
+BProA/BPepA were never validated, so the bug was latent.)
+
+Sample validation vs v15 multipro_v4.csv (138 overlap): ASA_Peptide, ASA_Protein,
+BProA all r=1.000; ASA_Complex 0.980. BPepA/BPP% DIVERGE and this is a v15 DEFECT,
+not ours: v15 reports the peptide as 100% buried (BPepA == ASA_Peptide) for 86.1%
+(17016/19759) of entries -- physically impossible; the original NACCESS pipeline
+read peptide in-complex ASA as ~0 (chain-id/.rsa parsing bug). We emit the correct
+ΔASA. BSA (0.874) is partly dragged by the same v15 defect via BSA=(BProA+BPepA)/2.
+We keep the correct values (same posture as extinction coefficients).
+
+## Multipro PRODIGY (Phase 2c)
+multipro_prodigy.py runs PRODIGY per protein chain on the multi-chain complex PDB
+(prodigy {cid}.pdb --selection {pep} {prot_i} --distance-cutoff 6.0 --temperature 25),
+colon-joined per chain in PROTEIN_CHAIN order. Reuses run_prodigy's parser.
+
+Validation vs v15 multipro_v4.csv (273 chain-pairs, 138 entries): Spearman
+intermolecular 0.995, apolar-apolar 0.992, binding affinity 0.960. Our per-chain
+values track v15 with a small systematic offset (~+7 contacts; e.g. 1A1R-C 87:12
+vs v15 80:11) because --selection C A measures the true C-A interface -- identical
+to the isolated pep-pro pair, as it should be -- whereas v15's multipro pipeline
+reported slightly fewer contacts in the multi-chain context. Ours is self-consistent
+(multipro C-A == pep-pro C-A). Pearson is unreliable here (one 2x outlier, 1BQP);
+Spearman is the right statistic for these skewed counts.
+
+## Multipro assembly (Phase 2d) — dataset complete
+multipro_assemble.py joins Phase 1 (grouping) + Phase 2b (surface) + Phase 2c
+(PRODIGY) with the pep-pro outputs (physchem/metadata/interface/legacy) via `items`.
+Single-value columns from items[0]; per-protein-chain columns colon-joined in items
+order. Nothing recomputed here -- one source of truth. Output multipro_final.csv,
+exact 64-column v15 order (multipro_v4.csv), incl. the two duplicate cluster_id
+columns and the U+02DA degree glyph. COLUMN ORDER IS SACRED (website reads it).
+
+leader_id = pep-pro leader_id of items[0] (verified 99.6% vs v15; 139/139 internally
+consistent with our legacy_clusters). peptide_Length/protein_Length duplicate
+PEPTIDE_SIZE/PROTEIN_SIZE.
+
+Sample validation vs v15 multipro_v4.csv (138 overlap): 64-col header IDENTICAL.
+Deterministic columns 100% (cluster_id, PDB_ID, PEPTIDE_CHAIN, CLASSIFICATION,
+DEPOSITION_DATE, STRUCTURE_METHOD, peptide_Formula/TotalAtoms). items/count/
+PROTEIN_CHAIN 97.8% (pep-pro BSA>0/terminal-X drops propagated up). PEPTIDE_SIZE
+81.2% / PROTEIN_DESC 65.2% (terminal-X + v14/v15 desc drift). leader_id 77.5% vs
+v14 = redundancy vintage drift (matches v15 files). Numeric: ASA/BProA Spearman
+1.000, contacts 0.995, affinity 0.960; BPepA/BPP%/BSA reflect v15's documented
+multipro defect (peptide 100% buried in 86% of v15 entries) -- we emit correct values.

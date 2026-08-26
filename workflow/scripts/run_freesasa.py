@@ -16,6 +16,11 @@ import freesasa
 # quiet FreeSASA's stderr chatter
 freesasa.setVerbosity(freesasa.silent)
 
+# Match NACCESS as closely as FreeSASA allows: NACCESS radii + Lee-Richards
+# (NACCESS's algorithm) at high slice count. Reproducible, still pip-only.
+_NACCESS = freesasa.Classifier.getStandardClassifier("naccess")
+_PARAMS = freesasa.Parameters({"algorithm": freesasa.LeeRichards,
+                               "probe-radius": 1.4, "n-slices": 100})
 
 def asa_of(lines):
     """Total ASA of a set of PDB ATOM lines written to a temp file."""
@@ -24,11 +29,24 @@ def asa_of(lines):
         tmp.writelines(l if l.endswith("\n") else l + "\n" for l in lines)
         tmp.write("END\n")
         tmp.close()
-        s = freesasa.Structure(tmp.name)
-        return freesasa.calc(s).totalArea()
+        s = freesasa.Structure(tmp.name, _NACCESS)
+        return freesasa.calc(s, _PARAMS).totalArea()
     finally:
         os.unlink(tmp.name)
 
+def areas_of(lines):
+    """(total_area, {chain_id: area}) from ONE FreeSASA calc (NACCESS-matched)."""
+    tmp = tempfile.NamedTemporaryFile("w", suffix=".pdb", delete=False)
+    try:
+        tmp.writelines(l if l.endswith("\n") else l + "\n" for l in lines)
+        tmp.write("END\n")
+        tmp.close()
+        result = freesasa.calc(freesasa.Structure(tmp.name, _NACCESS), _PARAMS)
+        per = {ch: sum(r.total for r in resd.values())
+               for ch, resd in result.residueAreas().items()}
+        return result.totalArea(), per
+    finally:
+        os.unlink(tmp.name)
 
 def process(pdb_path, pep_chain, prot_chain):
     with open(pdb_path) as fh:
@@ -37,13 +55,13 @@ def process(pdb_path, pep_chain, prot_chain):
     prot = [l for l in atom_lines if len(l) > 21 and l[21] == prot_chain]
     if not pep or not prot:
         return None
-    asa_complex = asa_of(atom_lines)
+    asa_complex, per_chain = areas_of(atom_lines)
     asa_pep = asa_of(pep)
     asa_prot = asa_of(prot)
     bsa = (asa_prot + asa_pep - asa_complex) / 2.0
-    # buried area of each partner upon binding (ΔASA)
-    b_pep = asa_pep - (asa_complex - asa_prot)   # peptide area buried
-    b_pro = asa_prot - (asa_complex - asa_pep)   # protein area buried
+    # true ΔASA: isolated area minus area still exposed within the complex
+    b_pep = asa_pep - per_chain.get(pep_chain, 0.0)     # peptide area buried
+    b_pro = asa_prot - sum(a for c, a in per_chain.items() if c != pep_chain)
     bpp = (100.0 * b_pep / asa_pep) if asa_pep > 0 else 0.0
     return {
         "ASA_Complex": round(asa_complex, 2),
