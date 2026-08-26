@@ -1,0 +1,7 @@
+biopython>=1.85
+freesasa
+prodigy-prot
+scikit-learn>=1.6,<1.11
+snakemake>=9,<10
+numpy
+pandas
