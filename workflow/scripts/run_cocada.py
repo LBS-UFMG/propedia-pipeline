@@ -30,7 +30,7 @@ def run_one(entry_id, pid, pep, prot, cif_dir, cocada_dir, ph, out_root):
         tmp.close()
         proc = subprocess.run(
             ["python3", "cocada.py", "-f", tmp.name,
-             "-c", f"{pep},{prot}", "-inter",
+             "-c", f"{pep},{prot}", "-inter", "-m", "1",
              "-o", entry_out, "-ph", str(ph), "-s"],
             cwd=cocada_dir, capture_output=True, text=True, timeout=300)
         produced = [f for f in os.listdir(entry_out) if f.endswith("_contacts.csv")]
