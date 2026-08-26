@@ -1,6 +1,7 @@
 machine:
   cif_dir:      "/home/arcanjomjr/new_propedia_files/cif"     # where CIFs download to (needs ~50GB)
   oracle_csv:   "/home/arcanjomjr/old_propedia/propedia26_v15.csv"  # reference DB for validation
+  multipro_oracle_csv: "/home/arcanjomjr/old_propedia/multipro_v4.csv"  # multipro reference DB
   cocada_dir:   "~/COCaDA"                                     # cloned COCaDA repo
   signa_dir:    "~/signa/Signa"                                # cloned SIGNA (dir with signa.py)
   ifeature_dir: "~/iFeature"                                   # cloned iFeature repo
