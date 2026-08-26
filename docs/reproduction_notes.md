@@ -346,3 +346,46 @@ PROTEIN_CHAIN 97.8% (pep-pro BSA>0/terminal-X drops propagated up). PEPTIDE_SIZE
 v14 = redundancy vintage drift (matches v15 files). Numeric: ASA/BProA Spearman
 1.000, contacts 0.995, affinity 0.960; BPepA/BPP%/BSA reflect v15's documented
 multipro defect (peptide 100% buried in 86% of v15 entries) -- we emit correct values.
+
+## COCaDA contacts: auth vs label chain-ID divergence (v15 defect, corrected)
+
+**Symptom.** On the 300-PDB sample, the COCaDA stage produced 0 contacts for
+249 entries and dropped 34 more entirely (618/652 rows). Zeros were concentrated
+in letter-chain complexes (e.g. `-I-H` ×30, `-L-H` ×38), not just symmetry pairs.
+
+**Cause.** mmCIF carries two chain-ID columns: `auth_asym_id` (author naming,
+used throughout Propedia and by Biopython's default parser) and `label_asym_id`
+(canonical mmCIF naming: A,B,…,Z,AA,AB,…). COCaDA selects chains on
+`label_asym_id`. The pipeline (and v15) passed `auth_asym_id` values to
+`-c pep,prot`. These IDs diverge in ~90% of PDB entries. Where the auth ID was
+not a valid label ID, COCaDA selected nothing → 0 contacts; where it happened to
+be a valid but *different* label chain, contacts were silently wrong.
+
+Example — `1A2C-L-H` (thrombin + inhibitor): auth `L,H`. COCaDA read them as
+label IDs; `L` is not a label ID here (labels run A–I) → 0 contacts. Correct
+polymer labels are `A,B` → 40 contacts.
+
+**Fix.** Before calling COCaDA, translate each pair's auth chain ID to its
+**polymer** `label_asym_id`, built from the CIF `_atom_site` block using ATOM
+(polymer) records only. Restricting to ATOM records makes the mapping 1:1: an
+auth chain's het groups get separate label IDs, but its single polymer entity
+has exactly one. Chains with no polymer label are reported (`no_polymer_label`),
+not silently zeroed. Stock public COCaDA v1.6 is used unchanged — no private
+build required. (`run_cocada.py`, `auth_to_polymer_label()`.)
+
+A second, compounding bug was fixed at the same time: COCaDA names its output by
+PDB id, so on a re-run an entry directory could contain a stale
+`<entry>_contacts.csv` from a prior run; the output glob then picked the stale
+file. `run_one` now clears the entry directory before running.
+
+**Result (sample).** 651/651 entries process (was 618); 52 zeros remain, all
+verified as genuine non-contacts at COCaDA's threshold (32 checked standalone
+after translation, 20 have auth==label so translation is a no-op). ~43% of the
+sample's contact rows changed relative to v15.
+
+**Consequence for the published database.** v15/v4 contact columns were computed
+with the same auth-vs-label mismatch and are therefore incorrect for a large
+fraction of entries. The pipeline emits the corrected values and documents the
+divergence (same posture as the BProA/BPepA and extinction-coefficient fixes).
+This is a case of the reproducible pipeline surfacing a latent defect in the
+published data, not merely reproducing it.
