@@ -22,7 +22,8 @@ cutoffs:
   peptide_len_min: 2
   peptide_len_max: 50
   protein_len_min: 51
-  max_residues_per_structure: 10000
+  max_residues_per_structure: 10000   # science/perf filter, NOT a format limit:
+                                      # the mmCIF intermediate has no atom/chain-ID ceiling
 
 collection:
   strategy: "prefilter-permissive"

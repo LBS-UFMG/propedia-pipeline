@@ -1,13 +1,20 @@
 """Rule 3 (sample): from each candidate CIF, classify chains by MODELED
 amino-acid count, find peptide(2-50)-protein(>50) pairs in contact (<=cutoff A),
-write the two-chain complex as a clean ATOM-only PDB, and record sequences.
+write the two-chain complex as a clean ATOM-only mmCIF, and record sequences.
+
+mmCIF (not PDB) is the intermediate: it is lossless for large complexes
+(>99,999 atoms), multi-character author chain IDs, and wide residue numbering,
+none of which legacy PDB can represent. Biopython MMCIFIO preserves the author
+chain IDs (auth_asym_id == chain.id); every downstream consumer keys on those
+same IDs (the pep_chain/prot_chain recorded here), and both PRODIGY and FreeSASA
+read auth_asym_id from the written file, so chain selection stays unambiguous.
 """
 import gzip
 import os
 import sys
 import tempfile
 
-from Bio.PDB import MMCIFParser, NeighborSearch, PDBIO, Select
+from Bio.PDB import MMCIFParser, MMCIFIO, NeighborSearch, Select
 from Bio.PDB.Polypeptide import is_aa
 from Bio.Data.IUPACData import protein_letters_3to1_extended
 
@@ -91,7 +98,7 @@ def process(pid, p, io, parser):
                 continue
             entry_id = f"{pid}-{pep_id}-{prot_id}"
             io.set_structure(model)
-            io.save(os.path.join(p.pdb_out_dir, f"{entry_id}.pdb"),
+            io.save(os.path.join(p.cif_out_dir, f"{entry_id}.cif"),
                     PairSelect([prot_id, pep_id]))
             rows.append({"id": entry_id, "pdb": pid,
                          "pep_chain": pep_id, "prot_chain": prot_id,
@@ -103,10 +110,10 @@ def process(pid, p, io, parser):
 
 def main():
     p = snakemake.params                                   # noqa: F821
-    os.makedirs(p.pdb_out_dir, exist_ok=True)
+    os.makedirs(p.cif_out_dir, exist_ok=True)
     sample = [l.strip() for l in open(snakemake.input.ids) if l.strip()]  # noqa: F821
     parser = MMCIFParser(QUIET=True)
-    io = PDBIO()
+    io = MMCIFIO()
     all_rows, stats = [], {}
     for i, pid in enumerate(sample, 1):
         rows, status = process(pid, p, io, parser)

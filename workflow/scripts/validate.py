@@ -112,41 +112,6 @@ def check_multipro_csv(path, oracle_path):
     return header == oheader, len(rows), len(overlap), hits
 
 
-def check_peppro_csv(path, oracle):
-    """Final propedia.csv: header identity + column alignment vs v15."""
-    with open(path) as fh:
-        header = fh.readline().rstrip("\n").split(";")
-    rows = list(csv.DictReader(open(path), delimiter=";"))
-    overlap = [r for r in rows if r["id"] in oracle]
-    align = ["PDB_ID", "CLASSIFICATION", "DEPOSITION_DATE", "RESOLUTION",
-             "STRUCTURE_METHOD", "TITLE", "peptide_Formula", "protein_Formula"]
-    legacy = ["sequence-cluster", "interface-cluster", "binding-cluster",
-              "is_leader", "leader_id"]
-    hits = {}
-    for c in align + legacy:
-        hits[c] = sum(1 for r in overlap
-                      if (r.get(c) or "").strip() == (oracle[r["id"]].get(c) or "").strip())
-    return header, len(rows), len(overlap), hits
-
-
-def check_multipro_csv(path, oracle_path):
-    """Final multipro_final.csv: header identity + exact-column alignment vs v4."""
-    with open(path) as fh:
-        header = fh.readline().rstrip("\n").split(";")
-    oracle = {r["cluster_id"]: r for r in csv.DictReader(open(oracle_path), delimiter=";")}
-    with open(oracle_path) as fh:
-        oheader = fh.readline().rstrip("\n").split(";")
-    rows = list(csv.DictReader(open(path), delimiter=";"))
-    overlap = [r for r in rows if r.get("cluster_id") in oracle]
-    exact = ["PDB_ID", "PROTEIN_CHAIN", "PEPTIDE_CHAIN", "count", "leader_id",
-             "TITLE", "CLASSIFICATION", "peptide_Formula", "protein_Formula"]
-    hits = {}
-    for c in exact:
-        hits[c] = sum(1 for r in overlap
-                      if (r.get(c) or "").strip() == (oracle[r["cluster_id"]].get(c) or "").strip())
-    return header == oheader, len(rows), len(overlap), hits
-
-
 def main():
     inp = snakemake.input                                  # noqa: F821
     p = snakemake.params                                   # noqa: F821
@@ -200,21 +165,6 @@ def main():
 
     mp_hdr_ok, mp_rows, mp_ov, mp_hits = check_multipro_csv(inp.multipro, p.multipro_oracle)
     lines.append("\n[Final CSV — multipro_final.csv vs v4]")
-    lines.append(f"   rows: {mp_rows}   overlap with v4: {mp_ov}")
-    lines.append(f"   header identical: {'yes' if mp_hdr_ok else 'NO'}")
-    for c, h in mp_hits.items():
-        lines.append(f"   {c:20s} {h}/{mp_ov}  ({pct(h,mp_ov)})")
-
-    p_oracle_header = list(next(csv.reader(open(p.oracle_csv), delimiter=";")))
-    hdr, nrows, nov, hits = check_peppro_csv(inp.propedia, oracle)
-    lines.append("\n[Final CSV \u2014 propedia.csv vs v15]")
-    lines.append(f"   rows: {nrows}   overlap with v15: {nov}")
-    lines.append(f"   header first-71 cols: {'match' if hdr[:71]==p_oracle_header[:71] else 'DIFFER'}")
-    for c, h in hits.items():
-        lines.append(f"   {c:20s} {h}/{nov}  ({pct(h,nov)})")
-
-    mp_hdr_ok, mp_rows, mp_ov, mp_hits = check_multipro_csv(inp.multipro, p.multipro_oracle)
-    lines.append("\n[Final CSV \u2014 multipro_final.csv vs v4]")
     lines.append(f"   rows: {mp_rows}   overlap with v4: {mp_ov}")
     lines.append(f"   header identical: {'yes' if mp_hdr_ok else 'NO'}")
     for c, h in mp_hits.items():

@@ -47,7 +47,7 @@ def main():
         fh.write("\t".join(out_cols) + "\n")
         for r in rows:
             cid = r["cluster_id"]
-            path = os.path.join(p.pdb_dir, f"{cid}.pdb")
+            path = os.path.join(p.cif_dir, f"{cid}.cif")
             if not os.path.exists(path):
                 continue
             pep = r["PEPTIDE_CHAIN"]

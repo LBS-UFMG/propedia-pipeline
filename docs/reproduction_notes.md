@@ -421,3 +421,50 @@ reproduced exactly.
 
 **How to verify:** strip `X` from both `pep_seq` and v15 `PEPTIDE_SEQ`, compare;
 expect ~100% equality. (Comparing raw sequences understates fidelity badly.)
+
+## mmCIF migration — intermediate format switched from PDB to mmCIF
+
+The per-pair structural intermediate is now **mmCIF**, not PDB. Extraction already
+parsed the source mmCIF; it previously wrote a lossy two-chain **PDB** that six
+downstream steps consumed (PRODIGY, FreeSASA, SIGNA, interface residues, and both
+multipro surface/PRODIGY), by string-slicing PDB columns (`line[21]`) or shelling
+out to PDB-only tooling. Legacy PDB cannot represent >99,999 atoms, multi-character
+author chain IDs, or wide/insertion-coded residue numbering — exactly the entries a
+modern rebuild must keep — and Biopython's `PDBIO` *raises* on a multi-char chain id
+(`Chain id ('LLL') exceeds PDB format limit`), silently dropping such complexes before.
+
+**What changed**
+- `extract_pairs.py` writes `{OUT}/cif/{id}.cif` via `MMCIFIO` (was `{OUT}/pdb/*.pdb`).
+  `load_first_model` / `PairSelect` are unchanged, so atom content is identical.
+- `run_prodigy.py` / `multipro_prodigy.py` point at the `.cif`. PRODIGY ≥2.4 reads
+  mmCIF and **selects on `auth_asym_id`** — the same `pep_chain`/`prot_chain` IDs
+  recorded in `pairs.tsv` — so `--selection` is unchanged. (Note: `MMCIFIO` renumbers
+  `label_asym_id` to A,B,… but keeps `auth_asym_id` = the original chain id; every
+  stage keys on auth, so this is invisible.)
+- `run_freesasa.py` / `multipro_surface.py` parse the mmCIF with Biopython and hand
+  the selection to FreeSASA via `structureFromBioPDB` (no PDB text, no `line[21]`).
+  **Verified numerically identical** to the old PDB-file path (Δ=0.000% on
+  ASA_Complex/Peptide/Protein for 1A2C), so the validated surface `r≈1.000` vs v15
+  is preserved.
+- `interface_residues.py` uses `MMCIFParser`.
+- `multipro_pdbs.py` → `multipro_cifs.py` (rule `multipro_pdbs` → `multipro_cifs`,
+  dir `{OUT}/multipro_pdb` → `{OUT}/multipro_cif`), `MMCIFIO` output.
+- `run_cocada.py` and `metadata.py` were already mmCIF-native — unchanged.
+
+**SIGNA keeps a PDB shim (deliberate).** SIGNA has only a weak hand-rolled mmCIF
+reader. It runs on the **peptide-only** structure (≤50 residues), which always fits
+PDB losslessly, so `write_peptide_pdbs.py` still emits a peptide PDB — but now from
+the per-pair mmCIF, copying the peptide chain into a fresh single-chain structure
+whose id is forced to `A`, so even a multi-char peptide chain serializes cleanly
+(aCSM ignores the chain label). Verified end-to-end: 1800-feature vector on 1A2C-L-H.
+
+**Robustness win demonstrated.** 1A2C chain L renamed to `LLL`: `PDBIO` raises and
+loses the complex; the mmCIF path + PRODIGY `--selection LLL H` returns the identical
+122 contacts / −12.1 kcal·mol⁻¹. Insertion-coded numbering (thrombin light chain,
+36 residues all at `resseq 1` with icodes) round-trips intact.
+
+**Verification run on 1A2C (all converted stages, real data):** extract → 3 pairs;
+FreeSASA BSA=1416.24; interface = 50 protein residues; PRODIGY 122 contacts /
+dg −12.1 / Kd 1.3e-9; COCaDA (auth L,H → label A,B) = 40 contacts; SIGNA = 1800
+features. Parity vs v15/v4 is a **comparison baseline**, not a pass/fail target —
+where mmCIF handling is more correct we keep the improvement and document it here.

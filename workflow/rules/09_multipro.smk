@@ -7,36 +7,36 @@ rule multipro_extract:
     script:
         "../scripts/multipro_extract.py"
 		
-rule multipro_pdbs:
+rule multipro_cifs:
     input:
         multipro = f"{OUT}/multipro.tsv",
     output:
-        marker = f"{OUT}/multipro_pdb/.written",
+        marker = f"{OUT}/multipro_cif/.written",
     params:
         cif_dir     = config["machine"]["cif_dir"],
-        pdb_out_dir = f"{OUT}/multipro_pdb",
+        cif_out_dir = f"{OUT}/multipro_cif",
     script:
-        "../scripts/multipro_pdbs.py"		
-		
+        "../scripts/multipro_cifs.py"
+
 rule multipro_surface:
     input:
         multipro = f"{OUT}/multipro.tsv",
-        marker   = f"{OUT}/multipro_pdb/.written",
+        marker   = f"{OUT}/multipro_cif/.written",
     output:
         surface = f"{OUT}/multipro_surface.tsv",
     params:
-        pdb_dir = f"{OUT}/multipro_pdb",
+        cif_dir = f"{OUT}/multipro_cif",
     script:
         "../scripts/multipro_surface.py"
 
 rule multipro_prodigy:
     input:
         multipro = f"{OUT}/multipro.tsv",
-        marker   = f"{OUT}/multipro_pdb/.written",
+        marker   = f"{OUT}/multipro_cif/.written",
     output:
         prodigy = f"{OUT}/multipro_prodigy.tsv",
     params:
-        pdb_dir         = f"{OUT}/multipro_pdb",
+        cif_dir         = f"{OUT}/multipro_cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
     script:

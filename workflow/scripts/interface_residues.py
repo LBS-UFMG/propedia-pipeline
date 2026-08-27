@@ -1,5 +1,5 @@
 """Interface residues (Propedia 6 A definition): protein residues having any atom
-within `cutoff` A of any peptide atom. Reads the extracted two-chain PDB written
+within `cutoff` A of any peptide atom. Reads the extracted two-chain mmCIF written
 by extract_pairs. Output: id, interface_residues = comma-joined protein residue
 sequence numbers (author numbering), ascending, each residue once.
 
@@ -11,12 +11,12 @@ import csv
 import os
 import sys
 
-from Bio.PDB import PDBParser, NeighborSearch
+from Bio.PDB import MMCIFParser, NeighborSearch
 
 
-def interface_resseqs(pdb_path, pep_chain, prot_chain, cutoff):
-    parser = PDBParser(QUIET=True)
-    model = next(iter(parser.get_structure("x", pdb_path)))
+def interface_resseqs(cif_path, pep_chain, prot_chain, cutoff):
+    parser = MMCIFParser(QUIET=True)
+    model = next(iter(parser.get_structure("x", cif_path)))
     if pep_chain not in model or prot_chain not in model:
         return None
     pep_atoms = list(model[pep_chain].get_atoms())
@@ -39,7 +39,7 @@ def main():
         fh.write("id\tinterface_residues\n")
         for row in pairs:
             eid = row["id"]
-            path = os.path.join(p.pdb_dir, f"{eid}.pdb")
+            path = os.path.join(p.cif_dir, f"{eid}.cif")
             if not os.path.exists(path):
                 continue
             n += 1

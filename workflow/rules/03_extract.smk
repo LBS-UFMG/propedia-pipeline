@@ -23,7 +23,7 @@ rule extract_pairs:
         pairs = f"{OUT}/pairs.tsv",
     params:
         cif_dir     = config["machine"]["cif_dir"],
-        pdb_out_dir = f"{OUT}/pdb",
+        cif_out_dir = f"{OUT}/cif",
         pep_min     = config["cutoffs"]["peptide_len_min"],
         pep_max     = config["cutoffs"]["peptide_len_max"],
         prot_min    = config["cutoffs"]["protein_len_min"],

@@ -6,6 +6,8 @@
 # stray cutoff-sweep outputs
 /*:*A
 
+# python virtualenv
+/.venv/
 # snakemake internals & generated outputs
 /.snakemake/
 /results/

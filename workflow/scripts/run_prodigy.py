@@ -42,10 +42,10 @@ def parse(text):
 def run_one(args):
     # everything run_one needs is passed in — no module globals, no snakemake,
     # so it is safe under both 'fork' and 'spawn' process-pool start methods.
-    eid, pep, prot, pdb_dir, cutoff, temperature = args
-    path = os.path.join(pdb_dir, f"{eid}.pdb")
+    eid, pep, prot, cif_dir, cutoff, temperature = args
+    path = os.path.join(cif_dir, f"{eid}.cif")
     if not os.path.exists(path):
-        return eid, None, "missing_pdb"
+        return eid, None, "missing_cif"
     try:
         proc = subprocess.run(["prodigy", path, "--selection", pep, prot,
                                "--distance-cutoff", str(cutoff),
@@ -67,12 +67,12 @@ def main():
     pairs_path = snakemake.input.pairs           # noqa: F821
     out_path   = snakemake.output.prodigy        # noqa: F821
     err_path   = snakemake.output.errors         # noqa: F821
-    pdb_dir     = snakemake.params.pdb_dir          # noqa: F821
+    cif_dir     = snakemake.params.cif_dir          # noqa: F821
     cutoff      = snakemake.params.distance_cutoff  # noqa: F821
     temperature = snakemake.params.temperature      # noqa: F821
 
     pairs = list(csv.DictReader(open(pairs_path), delimiter="\t"))
-    jobs = [(r["id"], r["pep_chain"], r["prot_chain"], pdb_dir, cutoff, temperature)
+    jobs = [(r["id"], r["pep_chain"], r["prot_chain"], cif_dir, cutoff, temperature)
             for r in pairs]
 
     ok, reasons = 0, {}

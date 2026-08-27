@@ -13,7 +13,7 @@ rule prodigy:
         prodigy = f"{OUT}/prodigy.tsv",
         errors  = f"{OUT}/prodigy_errors.tsv",
     params:
-        pdb_dir         = f"{OUT}/pdb",
+        cif_dir         = f"{OUT}/cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
     script:
@@ -52,7 +52,7 @@ rule peptide_pdbs:
     output:
         marker = f"{OUT}/pep_pdb/.written",
     params:
-        pair_pdb_dir = f"{OUT}/pdb",
+        pair_cif_dir = f"{OUT}/cif",
         pep_pdb_dir  = f"{OUT}/pep_pdb",
     script:
         "../scripts/write_peptide_pdbs.py"
@@ -78,7 +78,7 @@ rule freesasa:
     output:
         surface = f"{OUT}/surface.tsv",
     params:
-        pdb_dir       = f"{OUT}/pdb",
+        cif_dir       = f"{OUT}/cif",
         bsa_threshold = config["cutoffs"]["bsa_threshold_A2"],
     script:
         "../scripts/run_freesasa.py"
@@ -89,7 +89,7 @@ rule interface:
     output:
         interface = f"{OUT}/interface.tsv",
     params:
-        pdb_dir = f"{OUT}/pdb",
+        cif_dir = f"{OUT}/cif",
         cutoff  = config["cutoffs"]["interaction_distance_A"],
     script:
         "../scripts/interface_residues.py"		

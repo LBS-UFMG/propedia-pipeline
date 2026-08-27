@@ -1,7 +1,12 @@
+# biopython: MMCIFParser/MMCIFIO drive the mmCIF-based intermediate.
 biopython>=1.85
-freesasa
-prodigy-prot
+# freesasa: uses structureFromBioPDB (Bio.PDB structure -> FreeSASA), so surface
+# area is computed straight from the parsed mmCIF (no PDB text intermediate).
+freesasa>=2.2
+# prodigy-prot >=2.4 reads mmCIF natively and selects on auth_asym_id.
+prodigy-prot>=2.4
 scikit-learn>=1.6,<1.11
 snakemake>=9,<10
 numpy
 pandas
+tqdm

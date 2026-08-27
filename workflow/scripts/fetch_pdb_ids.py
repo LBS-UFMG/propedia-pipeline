@@ -9,6 +9,7 @@ peptides are often short *modeled* fragments of long SEQRES chains, and the size
 cap concerns amino acids (not rRNA monomers). Both are decided in Rule 3 from the
 actual structure. This keeps the candidate net a safe superset of the database.
 """
+import csv
 import json
 import sys
 import time
@@ -66,7 +67,16 @@ def search_entries(nodes):
 
 
 def load_ids(path):
-    with open(path) as fh:
+    """PDB IDs for the oracle-recall check. The oracle is the ;-delimited Propedia
+    table (PDB IDs in the PDB_ID column); fall back to a plain one-ID-per-line
+    list if that column is absent."""
+    with open(path, newline="") as fh:
+        head = fh.readline()
+        fh.seek(0)
+        if ";" in head and "PDB_ID" in head:
+            return {(row.get("PDB_ID") or "").strip().upper()
+                    for row in csv.DictReader(fh, delimiter=";")
+                    if (row.get("PDB_ID") or "").strip()}
         return {line.strip().upper() for line in fh if line.strip()}
 
 

@@ -121,7 +121,7 @@ which diffs each stage against the reference DB and prints the reproduction scor
 |---|---|---|
 | `fetch_candidate_ids` | candidate PDB IDs | RCSB Search API |
 | `download_cifs` | gzipped mmCIF files | RCSB file service |
-| `extract_pairs` | `pairs.tsv` (+ per-pair PDBs) | Biopython |
+| `extract_pairs` | `pairs.tsv` (+ per-pair mmCIF) | Biopython |
 | `physchem` | physicochemical properties | Biopython ProtParam |
 | `freesasa` | ASA/BSA surface areas | FreeSASA |
 | `prodigy` | binding ΔG, Kd, contacts | PRODIGY |
