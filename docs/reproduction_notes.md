@@ -389,3 +389,35 @@ fraction of entries. The pipeline emits the corrected values and documents the
 divergence (same posture as the BProA/BPepA and extinction-coefficient fixes).
 This is a case of the reproducible pipeline surfacing a latent defect in the
 published data, not merely reproducing it.
+
+## Peptide sequence: X-flagging convention (100% backbone, corrected framing)
+
+Earlier notes described the extraction discrepancy as a "terminal cap/modified
+residue" difference. The representative sample (stratified across the whole PDB-ID
+space, not just the 1xxx block) showed this framing was too narrow. The accurate
+statement:
+
+- v15 flags modified / non-standard residues as `X` **wherever they occur** in the
+  peptide chain (leading, trailing, or internal), and the *number* of residues
+  flagged X can differ from the current pipeline — this tracks Biopython parser
+  version differences, not a rule the pipeline gets wrong.
+- The underlying **amino-acid backbone is identical in 100% of compared peptides**
+  (1092/1092 on the representative sample): stripping X from both sides yields the
+  same sequence, with zero genuinely different backbones.
+- Surface-level "exact match" is ~62% only because the X *annotation* differs; this
+  number is meaningless without the 100% backbone figure beside it.
+
+**No impact downstream, verified:**
+- CNR clustering keys on `pep_seq`, but clustering by raw `pep_seq` vs by
+  X-stripped backbone gives the *identical* cluster count (392 = 392 on the
+  sample): the X-difference never splits or merges a cluster.
+- Physicochemistry, surface (r=1.000), and PRODIGY are unaffected (all ~100%).
+
+**Decision:** do NOT reverse-engineer v15's exact X-pattern. It is cosmetic
+annotation with no structural or scientific effect; the pipeline reports the
+amino-acid backbone with modified residues flagged per current Biopython. This is
+a documented convention difference, not a defect — the peptide identity is
+reproduced exactly.
+
+**How to verify:** strip `X` from both `pep_seq` and v15 `PEPTIDE_SEQ`, compare;
+expect ~100% equality. (Comparing raw sequences understates fidelity badly.)
