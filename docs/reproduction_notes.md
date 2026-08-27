@@ -468,3 +468,38 @@ FreeSASA BSA=1416.24; interface = 50 protein residues; PRODIGY 122 contacts /
 dg −12.1 / Kd 1.3e-9; COCaDA (auth L,H → label A,B) = 40 contacts; SIGNA = 1800
 features. Parity vs v15/v4 is a **comparison baseline**, not a pass/fail target —
 where mmCIF handling is more correct we keep the improvement and document it here.
+
+### Robustness stress-test — a structure legacy PDB cannot represent (4V4G ribosome)
+
+Querying the snapshot for large peptide-bearing protein complexes (a Protein
+entity ≥51 aa AND a short chain ≤50 aa AND ≥99,999 deposited atoms) returns
+**1,603 entries**. Three profiled:
+
+| Entry | Chains | Atoms | Multi-char auth chain IDs | pep / prot chains |
+|-------|-------:|------:|---------------------------|------------------:|
+| 4V4G  | 265    | 717,805 | all 265 (`AA,AB,…`)     | 10 / 240 |
+| 8GYM  | 326    | 568,568 | 274 (`1t,2e,…`)          | 10 / 308 |
+| 7N6G  | 264    | 793,755 | all 264 (`0A,0B,…`)      |  4 / 240 |
+
+Every one exceeds PDB's 99,999-atom ceiling **and** uses multi-character author
+chain IDs, so the legacy path could not emit a single pair from them — they were
+absent from the published database.
+
+Running the **actual converted code** on 4V4G, first contacting pair
+`4V4G-B6-BN` (peptide chain `B6`, 35 aa + protein chain `BN`, 124 aa — both
+multi-char), same pair through both paths:
+
+- **Legacy PDBIO:** `PDBIOException: Chain id ('BN') exceeds PDB format limit`
+  → pair dropped.
+- **mmCIF (MMCIFIO):** wrote `4V4G-B6-BN.cif`; then FreeSASA BSA=8.16 /
+  ASA_pep=3448.66, interface residue [119], PRODIGY dg=−3.3 / Kd=4.0e-3 /
+  1 intermolecular contact. Full stack succeeded.
+
+(`B6-BN` is just the first pair the greedy search hit — a weak 1-residue contact;
+the point is that the pipeline *processes* it. A real run evaluates all
+10×240 peptide/protein combinations and captures the strong interfaces too.)
+
+**Perf note:** Biopython's `MMCIFParser` is the cost on these — ~52 s to parse
+4V4G (717k atoms), ~40 s each for 8GYM/7N6G; every downstream stage (write,
+FreeSASA, interface, PRODIGY) is sub-second. `gemmi` would parse ~10–50× faster
+if the full-snapshot parse time over many 100k-atom entries becomes a concern.
