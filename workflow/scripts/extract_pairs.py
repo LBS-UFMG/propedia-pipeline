@@ -11,11 +11,15 @@ read auth_asym_id from the written file, so chain selection stays unambiguous.
 """
 import gzip
 import os
-import shutil
 import sys
 import tempfile
+from types import SimpleNamespace
 
 from Bio.PDB import MMCIFParser, MMCIFIO, NeighborSearch, Select
+
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
 from Bio.PDB.Polypeptide import is_aa
 from Bio.Data.IUPACData import protein_letters_3to1_extended
 
@@ -109,32 +113,53 @@ def process(pid, p, io, parser):
     return rows, "ok"
 
 
+def extract_worker(item):
+    """worker(item) -> (rows|[], status). Parses one input CIF, writes that entry's
+    per-pair CIFs (side effect), and returns the pair rows. Deterministic, so every
+    outcome is checkpointed (never retried)."""
+    pid, cif_dir, cif_out_dir, pep_min, pep_max, prot_min, cutoff = item
+    p = SimpleNamespace(cif_dir=cif_dir, cif_out_dir=cif_out_dir, pep_min=pep_min,
+                        pep_max=pep_max, prot_min=prot_min, cutoff=cutoff)
+    rows, status = process(pid, p, MMCIFIO(), MMCIFParser(QUIET=True))
+    return rows, status
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
-    # start clean: a smaller/different sample than a previous run must not leave
-    # orphan per-pair CIFs behind (a folder-scanning stage like SIGNA would read
-    # them). Downstream rules key on ids from pairs.tsv, so a full clear is safe.
-    if os.path.isdir(p.cif_out_dir):
-        shutil.rmtree(p.cif_out_dir)
-    os.makedirs(p.cif_out_dir, exist_ok=True)
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
+    os.makedirs(p.cif_out_dir, exist_ok=True)              # resume: do NOT clear
     sample = [l.strip() for l in open(snakemake.input.ids) if l.strip()]  # noqa: F821
-    parser = MMCIFParser(QUIET=True)
-    io = MMCIFIO()
-    all_rows, stats = [], {}
-    for i, pid in enumerate(sample, 1):
-        rows, status = process(pid, p, io, parser)
-        all_rows.extend(rows)
-        stats[status] = stats.get(status, 0) + 1
-        if i % 50 == 0:
-            print(f"{i}/{len(sample)} pairs={len(all_rows)} {stats}",
-                  file=sys.stderr)
+
+    items = [(pid, p.cif_dir, p.cif_out_dir, p.pep_min, p.pep_max, p.prot_min,
+              p.cutoff) for pid in sample]
+    workdir = checkpoint.namespace(p.ckpt, VERSION,
+                                   {"pep_min": p.pep_min, "pep_max": p.pep_max,
+                                    "prot_min": p.prot_min, "cutoff": p.cutoff})
+    results = checkpoint.run(items, extract_worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="extract")
+
     cols = ["id", "pdb", "pep_chain", "prot_chain",
             "pep_size", "prot_size", "pep_seq", "prot_seq"]
+    all_rows, keep_ids = [], set()
+    for pid in sample:
+        res = results.get(pid)
+        if not res or not res["record"]:
+            continue
+        for r in res["record"]:
+            all_rows.append(r)
+            keep_ids.add(r["id"])
     with open(snakemake.output.pairs, "w") as fh:          # noqa: F821
         fh.write("\t".join(cols) + "\n")
         for r in all_rows:
             fh.write("\t".join(str(r[c]) for c in cols) + "\n")
-    print(f"DONE pairs={len(all_rows)} {stats}", file=sys.stderr)
+
+    # hygiene: prune per-pair CIFs no longer referenced (smaller/different sample);
+    # replaces the old start-of-run clear, which would have wiped resume progress.
+    for f in os.listdir(p.cif_out_dir):
+        if f.endswith(".cif") and f[:-4] not in keep_ids:
+            os.remove(os.path.join(p.cif_out_dir, f))
+
+    print(f"DONE pairs={len(all_rows)}", file=sys.stderr)
 
 
 if __name__ == "__main__":

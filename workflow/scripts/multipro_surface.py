@@ -12,6 +12,9 @@ import os
 import sys
 
 import run_freesasa as fs   # reuse sub_structure/areas_of/asa_of + freesasa setup
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
 
 
 def process(model, pep_chain, prot_chains):
@@ -32,31 +35,41 @@ def process(model, pep_chain, prot_chains):
     }
 
 
+def worker(item):
+    """worker(item) -> (surface_record|None, status)."""
+    cid, cif_path, pep, prots = item
+    try:
+        r = process(fs.load_model(cif_path), pep, set(prots))
+    except Exception as exc:                               # noqa: BLE001
+        return None, f"retry:exc:{exc}"
+    return (r, "ok") if r is not None else (None, "no_surface")
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
     rows = list(csv.DictReader(open(snakemake.input.multipro), delimiter="\t"))  # noqa: F821
     cols = ["cluster_id", "ASA_Complex", "ASA_Protein", "ASA_Peptide",
             "BProA", "BPepA", "BPP%", "BSA"]
+
+    items = [(r["cluster_id"], os.path.join(p.cif_dir, f'{r["cluster_id"]}.cif'),
+              r["PEPTIDE_CHAIN"], r["PROTEIN_CHAIN"].split(":")) for r in rows
+             if os.path.exists(os.path.join(p.cif_dir, f'{r["cluster_id"]}.cif'))]
+    workdir = checkpoint.namespace(p.ckpt, VERSION, {})
+    results = checkpoint.run(items, worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="multipro_surface")
+
     n = 0
     with open(snakemake.output.surface, "w") as fh:        # noqa: F821
         fh.write("\t".join(cols) + "\n")
         for row in rows:
-            cid = row["cluster_id"]
-            path = os.path.join(p.cif_dir, f"{cid}.cif")
-            if not os.path.exists(path):
+            res = results.get(row["cluster_id"])
+            if not res or res["status"] != "ok" or not res["record"]:
                 continue
-            try:
-                r = process(fs.load_model(path), row["PEPTIDE_CHAIN"],
-                            set(row["PROTEIN_CHAIN"].split(":")))
-            except Exception:                              # noqa: BLE001
-                r = None
-            if r is None:
-                continue
-            r["cluster_id"] = cid
+            r = dict(res["record"])
+            r["cluster_id"] = row["cluster_id"]
             fh.write("\t".join(str(r[c]) for c in cols) + "\n")
             n += 1
-            if n % 50 == 0:
-                print(f"{n} surfaces", file=sys.stderr)
     print(f"DONE {n} multipro surfaces", file=sys.stderr)
 
 

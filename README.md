@@ -105,13 +105,38 @@ results/<mode>/reproduction_report.txt
 ```
 which diffs each stage against the reference DB and prints the reproduction scorecard.
 
-**Notes on running:**
-- The pipeline is **resumable** — re-run the same command after any interruption; finished
-  steps are skipped. If it complains the directory is locked, run `snakemake --unlock`.
-- **Full mode is a long run** (~73k pairs → hours to overnight). The CIF download must
-  complete first; it too is resumable.
-- Run on a machine with enough RAM for the parallel steps; don't run a large download and
-  the feature stages at the same time on a memory-constrained box.
+### Long runs: parallelism & resuming (read before a full run)
+
+The heavy per-entry stages (extract, prodigy, cocada, freesasa, interface, metadata,
+signa, ifeature, multipro) **checkpoint every entry** and run a bounded process pool.
+Two consequences:
+
+- **Parallelism** is one knob: `compute.threads` in the config (default 8). Set it to
+  your core count and run `snakemake --cores <that many>`; snakemake governs total
+  concurrency so co-scheduled stages don't oversubscribe. On a 64-core box:
+  ```bash
+  # config: compute.threads: 64
+  tmux new -s propedia            # so an SSH drop doesn't kill the run
+  snakemake --cores 64 --config mode=full --rerun-incomplete --keep-going
+  ```
+- **Resumable at per-entry granularity.** If the run is interrupted (kill, crash, SSH
+  drop, power), just re-run the **same command**. Finished stages are skipped; an
+  interrupted stage resumes from its checkpoints and only computes the entries it hadn't
+  finished — it does **not** recompute from zero. Checkpoints live in
+  `results/<mode>/.checkpoint/` (disposable, git-ignored).
+  - After a hard kill, run `snakemake --unlock` once before resuming.
+  - To force a clean recompute of a stage, delete its dir under
+    `results/<mode>/.checkpoint/` (or bump the stage script's `VERSION`, which
+    auto-invalidates its checkpoints). Changing a stage's params also auto-invalidates.
+
+**Other notes:**
+- The **CIF download** is separately incremental (skips validated files); it too resumes.
+- **Full mode is a long run** (hours to overnight). Give it enough RAM for the pool: the
+  parse-heavy stages hold one structure per worker (up to ~2 GB for the largest modern
+  complexes), so budget roughly `threads × 2 GB` headroom.
+- Subprocess tools (`prodigy`, COCaDA's `python3`, iFeature) resolve via `PATH`, so
+  **activate the environment first** (`source .venv/bin/activate`) or run snakemake with
+  the env on `PATH`.
 
 ---
 

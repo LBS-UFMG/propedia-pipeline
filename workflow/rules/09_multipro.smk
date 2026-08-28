@@ -24,8 +24,10 @@ rule multipro_surface:
         marker   = f"{OUT}/multipro_cif/.written",
     output:
         surface = f"{OUT}/multipro_surface.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir = f"{OUT}/multipro_cif",
+        ckpt    = f"{OUT}/.checkpoint/multipro_surface",
     script:
         "../scripts/multipro_surface.py"
 
@@ -35,10 +37,12 @@ rule multipro_prodigy:
         marker   = f"{OUT}/multipro_cif/.written",
     output:
         prodigy = f"{OUT}/multipro_prodigy.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir         = f"{OUT}/multipro_cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
+        ckpt            = f"{OUT}/.checkpoint/multipro_prodigy",
     script:
         "../scripts/multipro_prodigy.py"
 

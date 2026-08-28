@@ -23,6 +23,10 @@ from Bio.PDB import MMCIFParser
 from Bio.PDB.Model import Model
 from Bio.PDB.Structure import Structure
 
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
+
 # quiet FreeSASA's stderr chatter
 freesasa.setVerbosity(freesasa.silent)
 
@@ -87,35 +91,46 @@ def process(model, pep_chain, prot_chain):
     }
 
 
+def worker(item):
+    """worker(item) -> (surface_record|None, status). Surface is always cached (the
+    BSA>0 selection is applied at merge, so the filter can change without recompute)."""
+    eid, cif_path, pep, prot = item
+    try:
+        r = process(load_model(cif_path), pep, prot)
+    except Exception as exc:                               # noqa: BLE001
+        return None, f"retry:exc:{exc}"
+    return (r, "ok") if r is not None else (None, "no_surface")
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
     pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
     bsa_min = p.bsa_threshold
     cols = ["id", "ASA_Complex", "ASA_Peptide", "ASA_Protein",
             "BSA", "BPepA", "BProA", "BPP%"]
-    n = kept = 0
+
+    items = [(r["id"], os.path.join(p.cif_dir, f"{r['id']}.cif"),
+              r["pep_chain"], r["prot_chain"]) for r in pairs
+             if os.path.exists(os.path.join(p.cif_dir, f"{r['id']}.cif"))]
+    workdir = checkpoint.namespace(p.ckpt, VERSION, {})
+    results = checkpoint.run(items, worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="freesasa")
+
+    kept = 0
     with open(snakemake.output.surface, "w") as fh:        # noqa: F821
         fh.write("\t".join(cols) + "\n")
         for row in pairs:
-            eid = row["id"]
-            path = os.path.join(p.cif_dir, f"{eid}.cif")
-            if not os.path.exists(path):
+            res = results.get(row["id"])
+            if not res or res["status"] != "ok" or not res["record"]:
                 continue
-            n += 1
-            try:
-                r = process(load_model(path), row["pep_chain"], row["prot_chain"])
-            except Exception:                              # noqa: BLE001
-                r = None
-            if r is None:
-                continue
+            r = dict(res["record"])
             if r["BSA"] <= bsa_min:        # paper's BSA>0 selection
                 continue
-            kept += 1
-            r["id"] = eid
+            r["id"] = row["id"]
             fh.write("\t".join(str(r[c]) for c in cols) + "\n")
-            if n % 100 == 0:
-                print(f"{n} processed, {kept} kept (BSA>{bsa_min})", file=sys.stderr)
-    print(f"DONE {n} processed, {kept} passed BSA>{bsa_min}", file=sys.stderr)
+            kept += 1
+    print(f"DONE {kept} passed BSA>{bsa_min}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ import subprocess
 import sys
 
 import run_prodigy as rp
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
 
 DEG = "\u02da"
 # v15 multipro column -> run_prodigy.parse key
@@ -38,29 +41,44 @@ def run_chain(pdb_path, pep, prot, cutoff, temp):
         return {}
 
 
+def worker(item):
+    """worker(item) -> (record, status). Runs PRODIGY per protein chain on the
+    multi-chain complex; colon-joins per chain in PROTEIN_CHAIN order."""
+    cid, cif_path, pep, prots, cutoff, temp = item
+    try:
+        per_chain = [run_chain(cif_path, pep, pc, cutoff, temp) for pc in prots]
+    except Exception as exc:                               # noqa: BLE001
+        return None, f"retry:exc:{exc}"
+    rec = {col: ":".join(str(v.get(key, "")) for v in per_chain)
+           for col, key in COLMAP}
+    return rec, "ok"
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
     rows = list(csv.DictReader(open(snakemake.input.multipro), delimiter="\t"))  # noqa: F821
     out_cols = ["cluster_id"] + [c for c, _ in COLMAP]
+
+    items = [(r["cluster_id"], os.path.join(p.cif_dir, f'{r["cluster_id"]}.cif'),
+              r["PEPTIDE_CHAIN"], r["PROTEIN_CHAIN"].split(":"),
+              p.distance_cutoff, p.temperature) for r in rows
+             if os.path.exists(os.path.join(p.cif_dir, f'{r["cluster_id"]}.cif'))]
+    workdir = checkpoint.namespace(p.ckpt, VERSION,
+                                   {"cutoff": p.distance_cutoff, "temp": p.temperature})
+    results = checkpoint.run(items, worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="multipro_prodigy")
+
     n = 0
     with open(snakemake.output.prodigy, "w") as fh:        # noqa: F821
         fh.write("\t".join(out_cols) + "\n")
         for r in rows:
-            cid = r["cluster_id"]
-            path = os.path.join(p.cif_dir, f"{cid}.cif")
-            if not os.path.exists(path):
+            res = results.get(r["cluster_id"])
+            if not res or res["status"] != "ok" or not res["record"]:
                 continue
-            pep = r["PEPTIDE_CHAIN"]
-            prots = r["PROTEIN_CHAIN"].split(":")
-            per_chain = [run_chain(path, pep, pc, p.distance_cutoff, p.temperature)
-                         for pc in prots]
-            rec = {"cluster_id": cid}
-            for col, key in COLMAP:
-                rec[col] = ":".join(str(v.get(key, "")) for v in per_chain)
+            rec = dict(res["record"], cluster_id=r["cluster_id"])
             fh.write("\t".join(rec[c] for c in out_cols) + "\n")
             n += 1
-            if n % 20 == 0:
-                print(f"{n} multipro prodigy", file=sys.stderr)
     print(f"DONE {n} multipro prodigy", file=sys.stderr)
 
 

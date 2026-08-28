@@ -9,7 +9,6 @@ PRODIGY stages select on.
 """
 import csv
 import os
-import shutil
 import sys
 
 from Bio.PDB import MMCIFParser, MMCIFIO
@@ -19,16 +18,20 @@ import extract_pairs as ep
 
 def main():
     p = snakemake.params                                   # noqa: F821
-    # clear stale multi-chain CIFs from a previous run before writing
-    if os.path.isdir(p.cif_out_dir):
-        shutil.rmtree(p.cif_out_dir)
-    os.makedirs(p.cif_out_dir, exist_ok=True)
+    os.makedirs(p.cif_out_dir, exist_ok=True)              # resume: do NOT clear
     rows = list(csv.DictReader(open(snakemake.input.multipro), delimiter="\t"))  # noqa: F821
     parser = MMCIFParser(QUIET=True)
     io = MMCIFIO()
     cache = {}
-    n = 0
+    n = skipped = 0
+    want = {".written"}
     for r in rows:
+        cid = r["cluster_id"]
+        out = os.path.join(p.cif_out_dir, f"{cid}.cif")
+        want.add(f"{cid}.cif")
+        if os.path.exists(out):        # resume: already written on a prior run
+            skipped += 1
+            continue
         pid = r["PDB_ID"]
         chains = {r["PEPTIDE_CHAIN"]} | set(r["PROTEIN_CHAIN"].split(":"))
         if pid not in cache:
@@ -38,16 +41,22 @@ def main():
                 cache[pid] = None
         model = cache[pid]
         if model is None:
+            want.discard(f"{cid}.cif")
             continue
         io.set_structure(model)
-        io.save(os.path.join(p.cif_out_dir, f'{r["cluster_id"]}.cif'),
-                ep.PairSelect(chains))
+        tmp = out + ".tmp"
+        io.save(tmp, ep.PairSelect(chains))
+        os.replace(tmp, out)           # atomic: no partial CIF on a kill
         n += 1
         if n % 50 == 0:
-            print(f"{n} multipro cifs", file=sys.stderr)
+            print(f"{n} multipro cifs ({skipped} resumed)", file=sys.stderr)
 
-    open(os.path.join(p.cif_out_dir, ".written"), "w").write(f"{n}\n")
-    print(f"DONE {n} multipro cifs", file=sys.stderr)
+    for f in os.listdir(p.cif_out_dir):     # prune stale (smaller/different sample)
+        if f.endswith(".cif") and f not in want:
+            os.remove(os.path.join(p.cif_out_dir, f))
+
+    open(os.path.join(p.cif_out_dir, ".written"), "w").write(f"{n + skipped}\n")
+    print(f"DONE {n} new, {skipped} resumed multipro cifs", file=sys.stderr)
 
 
 if __name__ == "__main__":

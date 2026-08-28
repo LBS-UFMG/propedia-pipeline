@@ -9,11 +9,17 @@ iFeature ignores non-standard residues (e.g. X), and DDE/CTDT divide by
 (len-1)/(pair count), which raises ZeroDivisionError once a sequence collapses
 to <2 standard residues (e.g. 'LXX' -> 'L'). Excluded IDs are logged.
 """
+import concurrent.futures as cf
 import csv
+import hashlib
 import os
 import subprocess
 import sys
 import tempfile
+
+import checkpoint
+
+VERSION = "1"
 
 # 9 descriptors that sum to the paper's 1248 features; CTriad optional (+343).
 CORE_9 = ["AAC", "DPC", "DDE", "GAAC", "GDPC", "GTPC", "CTDC", "CTDT", "CTDD"]
@@ -47,6 +53,18 @@ def run_descriptor(ifeature_dir, fasta, desc, out_tsv):
     return True
 
 
+def ensure_descriptor(args):
+    """Top-level (picklable) worker: compute descriptor into its cache path, or
+    reuse it if a prior run already produced it. Returns (desc, out_tsv, ok)."""
+    desc, ifeature_dir, fasta, workdir = args
+    out_tsv = os.path.join(workdir, f"{desc}.tsv")
+    if os.path.exists(out_tsv):
+        return desc, out_tsv, True             # resumed
+    ok = run_descriptor(ifeature_dir, os.path.abspath(fasta), desc,
+                        os.path.abspath(out_tsv))
+    return desc, out_tsv, ok
+
+
 def load_matrix(path):
     rows = {}
     with open(path) as fh:
@@ -78,12 +96,29 @@ def main():
         for sid, ln in excluded:
             ef.write(f"{sid}\t{ln}\n")
 
+    # Cache each descriptor's output, content-addressed by the FASTA, so an
+    # interrupted run resumes (skips completed descriptors) and a changed peptide
+    # set recomputes. Descriptors run in parallel (each is a batch over the FASTA).
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
+    with open(fasta, "rb") as _fh:
+        fasta_hash = hashlib.sha1(_fh.read()).hexdigest()[:16]
+    workdir = checkpoint.namespace(p.ckpt, VERSION,
+                                   {"desc": descriptors, "min_len": min_len,
+                                    "fasta": fasta_hash})
+
+    jobs = [(desc, ifeature_dir, fasta, workdir) for desc in descriptors]
+    pool = min(threads, len(descriptors))
+    if pool > 1:
+        with cf.ProcessPoolExecutor(max_workers=pool) as ex:
+            done = list(ex.map(ensure_descriptor, jobs))
+    else:
+        done = [ensure_descriptor(j) for j in jobs]
+
     all_headers, all_rows = [], {}
     order = None
-    for desc in descriptors:
-        out_tsv = os.path.join(tmpdir, f"{desc}.tsv")
-        if not run_descriptor(ifeature_dir, os.path.abspath(fasta), desc,
-                              os.path.abspath(out_tsv)):
+    for desc in descriptors:                    # deterministic column order
+        out_tsv, ok = next((o, k) for (d, o, k) in done if d == desc)
+        if not ok or not os.path.exists(out_tsv):
             print(f"  {desc}: FAILED", file=sys.stderr)
             continue
         hdr, rows = load_matrix(out_tsv)

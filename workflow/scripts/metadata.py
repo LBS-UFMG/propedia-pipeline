@@ -15,6 +15,10 @@ import sys
 
 from Bio.PDB.MMCIF2Dict import MMCIF2Dict
 
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
+
 
 def _first(d, key):
     v = d.get(key)
@@ -127,23 +131,35 @@ OUT_COLS = ["id", "CLASSIFICATION", "DEPOSITION_DATE", "RESOLUTION",
             "PEPTIDE_DESC", "PROTEIN_DESC"]
 
 
+def worker(item):
+    """worker(item) -> (meta_dict|None, status). One CIF header parse per PDB id.
+    A parse failure is deterministic, so it is checkpointed (not retried)."""
+    pid, cif_path = item
+    try:
+        return parse_cif(cif_path), "ok"
+    except Exception as exc:                               # noqa: BLE001
+        return None, f"parse_error:{exc}"
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
     pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
-    cache = {}
+
+    pids = sorted({row["pdb"] for row in pairs})
+    items = [(pid, shard_path(p.cif_dir, pid)) for pid in pids]
+    workdir = checkpoint.namespace(p.ckpt, VERSION, {})
+    results = checkpoint.run(items, worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="metadata")
+
     n = 0
     with open(snakemake.output.metadata, "w") as fh:       # noqa: F821
         fh.write("\t".join(OUT_COLS) + "\n")
         for row in pairs:
-            pid = row["pdb"]
-            if pid not in cache:
-                try:
-                    cache[pid] = parse_cif(shard_path(p.cif_dir, pid))
-                except Exception as exc:                   # noqa: BLE001
-                    cache[pid] = {"_error": str(exc)}
-            meta = cache[pid]
-            if "_error" in meta:
+            res = results.get(row["pdb"])
+            if not res or res["status"] != "ok" or not res["record"]:
                 continue
+            meta = res["record"]
             pep, prot = row["pep_chain"], row["prot_chain"]
             rec = {
                 "id": row["id"],

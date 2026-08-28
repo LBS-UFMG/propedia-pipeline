@@ -56,6 +56,11 @@ ml:
   train_dir: "~/propedia26-sm/data/csm-peptides/features/new/train"
   test_dir:  "~/propedia26-sm/data/csm-peptides/features/new/test"
 
+compute:
+  threads: 8      # pool size for the checkpointed per-entry stages; set to 64 on
+                  # the lab box, then run `snakemake --cores 64`. Raising this is
+                  # the whole parallelism tuning step — no code change needed.
+
 paths:
   results_dir: "results"
   

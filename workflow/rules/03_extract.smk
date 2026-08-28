@@ -22,6 +22,7 @@ rule extract_pairs:
         done = f"{OUT}/interim/download_cifs.done",
     output:
         pairs = f"{OUT}/pairs.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir     = config["machine"]["cif_dir"],
         cif_out_dir = f"{OUT}/cif",
@@ -29,5 +30,6 @@ rule extract_pairs:
         pep_max     = config["cutoffs"]["peptide_len_max"],
         prot_min    = config["cutoffs"]["protein_len_min"],
         cutoff      = config["cutoffs"]["interaction_distance_A"],
+        ckpt        = f"{OUT}/.checkpoint/extract",
     script:
         "../scripts/extract_pairs.py"

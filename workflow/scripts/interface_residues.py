@@ -13,6 +13,10 @@ import sys
 
 from Bio.PDB import MMCIFParser, NeighborSearch
 
+import checkpoint
+
+VERSION = "2"            # bump on logic change -> invalidates old checkpoints
+
 
 def interface_resseqs(cif_path, pep_chain, prot_chain, cutoff):
     parser = MMCIFParser(QUIET=True)
@@ -31,26 +35,38 @@ def interface_resseqs(cif_path, pep_chain, prot_chain, cutoff):
     return sorted(hits)
 
 
+def worker(item):
+    """worker(item) -> (resseq_list|None, status)."""
+    eid, cif_path, pep, prot, cutoff = item
+    try:
+        res = interface_resseqs(cif_path, pep, prot, cutoff)
+    except Exception as exc:                               # noqa: BLE001
+        return None, f"retry:exc:{exc}"
+    return (res, "ok") if res is not None else (None, "no_interface")
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
+    threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
     pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
-    n = written = 0
+
+    items = [(r["id"], os.path.join(p.cif_dir, f"{r['id']}.cif"),
+              r["pep_chain"], r["prot_chain"], p.cutoff) for r in pairs
+             if os.path.exists(os.path.join(p.cif_dir, f"{r['id']}.cif"))]
+    workdir = checkpoint.namespace(p.ckpt, VERSION, {"cutoff": p.cutoff})
+    results = checkpoint.run(items, worker, workdir, threads=threads,
+                             id_of=lambda it: it[0], stage="interface")
+
+    written = 0
     with open(snakemake.output.interface, "w") as fh:      # noqa: F821
         fh.write("id\tinterface_residues\n")
         for row in pairs:
-            eid = row["id"]
-            path = os.path.join(p.cif_dir, f"{eid}.cif")
-            if not os.path.exists(path):
+            res = results.get(row["id"])
+            if not res or res["status"] != "ok" or res["record"] is None:
                 continue
-            n += 1
-            res = interface_resseqs(path, row["pep_chain"], row["prot_chain"], p.cutoff)
-            if res is None:
-                continue
-            fh.write(f"{eid}\t{','.join(str(x) for x in res)}\n")
+            fh.write(f"{row['id']}\t{','.join(str(x) for x in res['record'])}\n")
             written += 1
-            if n % 100 == 0:
-                print(f"{n} processed", file=sys.stderr)
-    print(f"DONE {written}/{n} interface lists written", file=sys.stderr)
+    print(f"DONE {written} interface lists written", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -12,10 +12,12 @@ rule prodigy:
     output:
         prodigy = f"{OUT}/prodigy.tsv",
         errors  = f"{OUT}/prodigy_errors.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir         = f"{OUT}/cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
+        ckpt            = f"{OUT}/.checkpoint/prodigy",
     script:
         "../scripts/run_prodigy.py"
 
@@ -25,11 +27,13 @@ rule cocada:
         done  = f"{OUT}/interim/download_cifs.done",
     output:
         summary = f"{OUT}/cocada_summary.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir    = config["machine"]["cif_dir"],
         cocada_dir = config["machine"]["cocada_dir"],
         ph         = config["cocada"]["ph"],
         out_root   = f"{OUT}/cocada",
+        ckpt       = f"{OUT}/.checkpoint/cocada",
     script:
         "../scripts/run_cocada.py"
 
@@ -39,10 +43,12 @@ rule ifeature:
     output:
         signatures = f"{OUT}/seq_signatures.tsv",
         excluded   = f"{OUT}/seq_signatures_excluded.tsv",
+    threads: config["compute"]["threads"]
     params:
         ifeature_dir      = config["machine"]["ifeature_dir"],
         include_ctriad    = False,
         min_signature_len = config["signatures"]["min_signature_len"],
+        ckpt              = f"{OUT}/.checkpoint/ifeature",
     script:
         "../scripts/run_ifeature.py"
 
@@ -62,10 +68,11 @@ rule signa:
         marker = f"{OUT}/pep_pdb/.written",
     output:
         signatures = f"{OUT}/struct_signatures.csv",
+    threads: config["compute"]["threads"]
     params:
         signa_dir    = config["machine"]["signa_dir"],
         pep_pdb_dir  = f"{OUT}/pep_pdb",
-        raw_output   = f"{OUT}/signa_raw.csv",
+        ckpt         = f"{OUT}/.checkpoint/signa",
         cutoff_limit = config["signatures"]["acsm_cutoff_limit"],
         cutoff_step  = config["signatures"]["acsm_cutoff_step"],
         cumulative   = config["signatures"]["acsm_cumulative"],
@@ -77,29 +84,35 @@ rule freesasa:
         pairs = f"{OUT}/pairs.tsv",
     output:
         surface = f"{OUT}/surface.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir       = f"{OUT}/cif",
         bsa_threshold = config["cutoffs"]["bsa_threshold_A2"],
+        ckpt          = f"{OUT}/.checkpoint/freesasa",
     script:
         "../scripts/run_freesasa.py"
-		
+
 rule interface:
     input:
         pairs = f"{OUT}/pairs.tsv",
     output:
         interface = f"{OUT}/interface.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir = f"{OUT}/cif",
         cutoff  = config["cutoffs"]["interaction_distance_A"],
+        ckpt    = f"{OUT}/.checkpoint/interface",
     script:
-        "../scripts/interface_residues.py"		
+        "../scripts/interface_residues.py"
 
 rule metadata:
     input:
         pairs = f"{OUT}/pairs.tsv",
     output:
         metadata = f"{OUT}/metadata.tsv",
+    threads: config["compute"]["threads"]
     params:
         cif_dir = config["machine"]["cif_dir"],
+        ckpt    = f"{OUT}/.checkpoint/metadata",
     script:
         "../scripts/metadata.py"

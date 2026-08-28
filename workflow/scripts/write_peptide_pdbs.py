@@ -9,7 +9,6 @@ signatures are computed on coordinates and ignore the chain label.
 """
 import csv
 import os
-import shutil
 import sys
 
 from Bio.PDB import MMCIFParser, PDBIO
@@ -20,25 +19,30 @@ from Bio.PDB.Structure import Structure
 def main():
     p = snakemake.params                                   # noqa: F821
     pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
-    # clear stale peptide PDBs first — SIGNA scans this whole folder, so orphans
-    # from a previous (larger) run would be counted as extra signatures.
-    if os.path.isdir(p.pep_pdb_dir):
-        shutil.rmtree(p.pep_pdb_dir)
-    os.makedirs(p.pep_pdb_dir, exist_ok=True)
+    os.makedirs(p.pep_pdb_dir, exist_ok=True)              # resume: do NOT clear
     parser = MMCIFParser(QUIET=True)
     io = PDBIO()
-    n = 0
+    n = skipped = 0
+    want = set()
     for row in pairs:
         eid = row["id"]
         pep_chain = row["pep_chain"]
+        out = os.path.join(p.pep_pdb_dir, f"{eid}.pdb")
+        want.add(f"{eid}.pdb")
+        if os.path.exists(out):        # resume: already written on a prior run
+            skipped += 1
+            continue
         src = os.path.join(p.pair_cif_dir, f"{eid}.cif")
         if not os.path.exists(src):
+            want.discard(f"{eid}.pdb")
             continue
         try:
             model = next(iter(parser.get_structure(eid, src)))
         except Exception:                                  # noqa: BLE001
+            want.discard(f"{eid}.pdb")
             continue
         if pep_chain not in model:
+            want.discard(f"{eid}.pdb")
             continue
         # fresh single-chain structure; force a PDB-legal single-char chain id
         st = Structure(eid)
@@ -48,14 +52,22 @@ def main():
         pep.id = "A"
         m.add(pep)
         io.set_structure(st)
-        io.save(os.path.join(p.pep_pdb_dir, f"{eid}.pdb"))
+        # atomic: write to tmp then rename, so a killed run never leaves a partial
+        # PDB that resume would treat as complete
+        tmp = out + ".tmp"
+        io.save(tmp)
+        os.replace(tmp, out)
         n += 1
 
-    # create the marker Snakemake declared as this rule's output
-    with open(snakemake.output.marker, "w") as fh:   # noqa: F821
-        fh.write(f"wrote {n} peptide-only PDBs\n")
+    # prune stale peptide PDBs (smaller/different sample) — SIGNA scans this folder
+    for f in os.listdir(p.pep_pdb_dir):
+        if f.endswith(".pdb") and f not in want:
+            os.remove(os.path.join(p.pep_pdb_dir, f))
 
-    print(f"wrote {n} peptide-only PDBs to {p.pep_pdb_dir}", file=sys.stderr)
+    with open(snakemake.output.marker, "w") as fh:   # noqa: F821
+        fh.write(f"wrote {n} (+{skipped} resumed) peptide-only PDBs\n")
+    print(f"wrote {n} new, {skipped} resumed peptide-only PDBs to {p.pep_pdb_dir}",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":
