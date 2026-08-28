@@ -112,13 +112,19 @@ signa, ifeature, multipro) **checkpoint every entry** and run a bounded process 
 Two consequences:
 
 - **Parallelism** is one knob: `compute.threads` in the config (default 8). Set it to
-  your core count and run `snakemake --cores <that many>`; snakemake governs total
-  concurrency so co-scheduled stages don't oversubscribe. On a 64-core box:
+  your **physical** core budget and run `snakemake --cores <logical threads>`; snakemake
+  governs total concurrency so co-scheduled stages don't oversubscribe. Setting threads
+  to the physical core count (not the SMT thread count) keeps each CPU-bound stage at its
+  sweet spot, while `--cores` at the thread count lets snakemake co-schedule two stages
+  (e.g. CPU-bound freesasa ‖ wait-heavy cocada) to fill the SMT siblings. Example, on a
+  box where you may use **32 cores / 64 threads**:
   ```bash
-  # config: compute.threads: 64
+  # config: compute.threads: 32
   tmux new -s propedia            # so an SSH drop doesn't kill the run
   snakemake --cores 64 --config mode=full --rerun-incomplete --keep-going
   ```
+  (Budget RAM for the pool — see below. Here ~64 workers × up to ~2 GB stays well under
+  a 384 GB allowance.)
 - **Resumable at per-entry granularity.** If the run is interrupted (kill, crash, SSH
   drop, power), just re-run the **same command**. Finished stages are skipped; an
   interrupted stage resumes from its checkpoints and only computes the entries it hadn't
