@@ -129,5 +129,6 @@ rule pisa:
         cif_dir  = config["machine"]["cif_dir"],   # full mmCIF (has _cell/_symmetry)
         ccp4_dir = config["machine"]["ccp4_dir"],
         ckpt     = f"{STATE}/checkpoint/pisa",
+        timeout  = config.get("pisa", {}).get("timeout", 600),
     script:
         "../scripts/run_pisa.py"

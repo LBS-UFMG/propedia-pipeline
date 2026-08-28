@@ -21,6 +21,7 @@ import gzip
 import itertools
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,7 +29,8 @@ import xml.etree.ElementTree as ET
 
 import checkpoint
 
-VERSION = "1"
+VERSION = "1"            # NOT bumped: ok/error results unchanged by the timeout fix,
+                         # so existing checkpoints stay valid (only timeouts re-attempt)
 XRAY = "X-RAY DIFFRACTION"
 _CTR = itertools.count()
 
@@ -79,9 +81,31 @@ def _decompress(src, folder):
     return src
 
 
+class _Timeout(Exception):
+    pass
+
+
+def _pisa_run(cmd, timeout):
+    """Run a pisa command in its own process group and, on timeout, SIGKILL the whole
+    group (CCP4 pisa spawns children that outlive a plain kill -> orphan pile-up)."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        return proc.returncode, (out or "") + (err or "")
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        proc.communicate()
+        raise _Timeout()
+
+
 def run_one(args):
     """worker(item) -> (interfaces|None, status). Runs PISA on one full structure and
-    returns every interface. Timeouts/transient errors use 'retry:' so they re-run."""
+    returns every interface. A timeout is a PERSISTED status (recorded, not retried) so
+    a pathological structure never wedges future runs."""
     pid, cif_path, ccp4_dir, cfg_modelo, timeout = args
     if not os.path.exists(cif_path):
         return None, "missing_cif"
@@ -92,17 +116,14 @@ def run_one(args):
     try:
         cfg = _write_cfg(cfg_modelo, data_root, os.path.join(data_root, "pisa.cfg"))
         struct = _decompress(cif_path, tmpdir)
-        r = subprocess.run([pisa_bin, session, "-analyse", struct, cfg],
-                           capture_output=True, text=True, timeout=timeout)
-        out = (r.stdout or "") + (r.stderr or "")
+        rc, out = _pisa_run([pisa_bin, session, "-analyse", struct, cfg], timeout)
         assembly = "yes" if "assembly analysis: done" in out else "no"
-        if r.returncode != 0 or "quit" in out:
+        if rc != 0 or "quit" in out:
             return {"assembly_done": assembly}, "error"
-        x = subprocess.run([pisa_bin, session, "-xml", "interfaces", cfg],
-                           capture_output=True, text=True, timeout=timeout)
-        if x.returncode != 0:
+        xrc, xout = _pisa_run([pisa_bin, session, "-xml", "interfaces", cfg], timeout)
+        if xrc != 0:
             return {"assembly_done": assembly}, "error"
-        root = ET.fromstring(x.stdout)
+        root = ET.fromstring(xout)
         interfaces = list(root.iter("interface"))
         rows = []
         for i in interfaces:
@@ -118,8 +139,8 @@ def run_one(args):
             })
         return {"assembly_done": assembly, "n_interfaces": len(interfaces),
                 "interfaces": rows}, ("ok" if rows else "no_interface")
-    except subprocess.TimeoutExpired:
-        return None, "retry:timeout"
+    except _Timeout:
+        return None, "timeout"          # persisted: recorded, never retried/re-hung
     except ET.ParseError as e:
         return None, "xml_invalid:%s" % str(e)[:120]
     except Exception as e:                                 # noqa: BLE001
@@ -153,7 +174,8 @@ def main():
     p = snakemake.params                                   # noqa: F821
     ccp4_dir = os.path.expanduser(p.ccp4_dir)
     cfg_modelo = os.path.join(ccp4_dir, "share", "pisa", "pisa.cfg")
-    timeout = getattr(p, "timeout", 900)
+    timeout = getattr(p, "timeout", 600)   # per pisa call; a timed-out structure is
+                                           # recorded (blank PISA), not retried
     threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
 
     # CCP4 environment (inherited by the fork pool workers)
