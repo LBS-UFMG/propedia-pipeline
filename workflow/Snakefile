@@ -14,6 +14,7 @@ include: "rules/07_validate.smk"
 include: "rules/08_assemble.smk"
 include: "rules/09_multipro.smk"
 include: "rules/10_release.smk"
+include: "rules/11_package.smk"
 
 rule all:
     input:
