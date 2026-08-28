@@ -8,12 +8,14 @@ rule package:
     input:
         propedia = f"{OUT}/propedia.csv",
         multipro = f"{OUT}/multipro_final.csv",
+        mp_cocada = f"{OUT}/multipro_cocada_summary.tsv",
     output:
         marker = f"{WEB}/.packaged",
     params:
         mode                  = config["mode"],
         web_dir               = WEB,
         cocada_dir            = f"{STATE}/cocada",
+        multipro_cocada_dir   = f"{STATE}/multipro_cocada",
         legacy_dir            = config["clusters"]["legacy_dir"],
         # optional: a file of target column names -> permutes to the site's order
         column_order          = config.get("package", {}).get("column_order", ""),

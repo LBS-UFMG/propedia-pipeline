@@ -31,6 +31,22 @@ rule multipro_surface:
     script:
         "../scripts/multipro_surface.py"
 
+rule multipro_cocada:
+    input:
+        multipro = f"{OUT}/multipro.tsv",
+        marker   = f"{STATE}/multipro_cif/.written",
+    output:
+        summary = f"{OUT}/multipro_cocada_summary.tsv",
+    threads: config["compute"]["threads"]
+    params:
+        cif_dir    = f"{STATE}/multipro_cif",
+        cocada_dir = config["machine"]["cocada_dir"],
+        ph         = config["cocada"]["ph"],
+        out_root   = f"{STATE}/multipro_cocada",
+        ckpt       = f"{STATE}/checkpoint/multipro_cocada",
+    script:
+        "../scripts/multipro_cocada.py"
+
 rule multipro_prodigy:
     input:
         multipro = f"{OUT}/multipro.tsv",

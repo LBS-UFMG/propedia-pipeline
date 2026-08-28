@@ -74,6 +74,23 @@ def package_contacts(cocada_dir, out_dir, ids):
     return n
 
 
+def package_multipro_contacts(mp_cocada_dir, out_dir, cluster_ids):
+    """Place each Multipro entry's COCaDA contacts (run on the multi-chain complex)
+    at multipro/contacts/<cluster_id>/<PDB>_contacts.csv."""
+    _clear_make(out_dir)
+    n = 0
+    for cid in cluster_ids:
+        pdb = cid.split("-")[0]
+        src = os.path.join(mp_cocada_dir, cid, f"{pdb}_contacts.csv")
+        if not os.path.exists(src):
+            continue
+        dst_dir = os.path.join(out_dir, cid)
+        os.makedirs(dst_dir, exist_ok=True)
+        shutil.copy2(src, os.path.join(dst_dir, f"{pdb}_contacts.csv"))
+        n += 1
+    return n
+
+
 def copy_clusters(legacy_dir, out_dir):
     """Copy the cluster tables the site's Clusters page reads. What we have comes
     from the inherited legacy clusters; therapeutic-class lists (AAP..SBP) and
@@ -107,10 +124,15 @@ def main():
     n_con = package_contacts(os.path.expanduser(p.cocada_dir),
                              os.path.join(base, "contacts"), ids)
 
-    # --- multipro: per-entry csv (contacts TODO: needs multipro-complex COCaDA) ---
+    # --- multipro: per-entry csv + contacts (COCaDA on the multi-chain complex) ---
     n_mp, mp_header = split_per_entry(snakemake.input.multipro,          # noqa: F821
                                       os.path.join(base, "multipro", "csv"),
                                       id_col="cluster_id", target=target_mp)
+    mp_ids = [r["cluster_id"] for r in csv.DictReader(open(snakemake.input.multipro),  # noqa: F821
+                                                      delimiter=";")]
+    n_mpcon = package_multipro_contacts(os.path.expanduser(p.multipro_cocada_dir),
+                                        os.path.join(base, "multipro", "contacts"),
+                                        mp_ids)
 
     # --- clusters (shared across modes) ---
     clusters = copy_clusters(p.legacy_dir, os.path.join(web, "data", "clusters"))
@@ -125,13 +147,13 @@ def main():
 
     with open(snakemake.output.marker, "w") as fh:         # noqa: F821
         fh.write(f"peppro_csv={n_csv} contacts={n_con} multipro_csv={n_mp} "
-                 f"clusters={len(clusters)}\n")
+                 f"multipro_contacts={n_mpcon} clusters={len(clusters)}\n")
     print(f"PACKAGED -> {base}\n  per-entry csv: {n_csv}\n  contacts: {n_con}\n"
-          f"  multipro csv: {n_mp}\n  clusters copied: {len(clusters)} {clusters}\n"
+          f"  multipro csv: {n_mp}\n  multipro contacts: {n_mpcon}\n"
+          f"  clusters copied: {len(clusters)} {clusters}\n"
           f"  column manifests: columns_peppro.txt ({len(header)} cols), "
           f"columns_multipro.txt ({len(mp_header)} cols)\n"
-          f"  TODO (docs): multipro contacts, therapeutic-class cluster lists, "
-          f"Explore summary tsv, final column permutation to the site order",
+          f"  TODO (docs): Explore summary tsv, final column permutation to the site order",
           file=sys.stderr)
 
 
