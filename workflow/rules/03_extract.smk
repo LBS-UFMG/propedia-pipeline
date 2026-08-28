@@ -25,11 +25,11 @@ rule extract_pairs:
     threads: config["compute"]["threads"]
     params:
         cif_dir     = config["machine"]["cif_dir"],
-        cif_out_dir = f"{OUT}/cif",
+        cif_out_dir = f"{STATE}/cif",
         pep_min     = config["cutoffs"]["peptide_len_min"],
         pep_max     = config["cutoffs"]["peptide_len_max"],
         prot_min    = config["cutoffs"]["protein_len_min"],
         cutoff      = config["cutoffs"]["interaction_distance_A"],
-        ckpt        = f"{OUT}/.checkpoint/extract",
+        ckpt        = f"{STATE}/checkpoint/extract",
     script:
         "../scripts/extract_pairs.py"

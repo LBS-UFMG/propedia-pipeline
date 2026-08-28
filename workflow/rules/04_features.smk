@@ -14,10 +14,10 @@ rule prodigy:
         errors  = f"{OUT}/prodigy_errors.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir         = f"{OUT}/cif",
+        cif_dir         = f"{STATE}/cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
-        ckpt            = f"{OUT}/.checkpoint/prodigy",
+        ckpt            = f"{STATE}/checkpoint/prodigy",
     script:
         "../scripts/run_prodigy.py"
 
@@ -32,8 +32,8 @@ rule cocada:
         cif_dir    = config["machine"]["cif_dir"],
         cocada_dir = config["machine"]["cocada_dir"],
         ph         = config["cocada"]["ph"],
-        out_root   = f"{OUT}/cocada",
-        ckpt       = f"{OUT}/.checkpoint/cocada",
+        out_root   = f"{STATE}/cocada",
+        ckpt       = f"{STATE}/checkpoint/cocada",
     script:
         "../scripts/run_cocada.py"
 
@@ -48,7 +48,7 @@ rule ifeature:
         ifeature_dir      = config["machine"]["ifeature_dir"],
         include_ctriad    = False,
         min_signature_len = config["signatures"]["min_signature_len"],
-        ckpt              = f"{OUT}/.checkpoint/ifeature",
+        ckpt              = f"{STATE}/checkpoint/ifeature",
     script:
         "../scripts/run_ifeature.py"
 
@@ -56,23 +56,23 @@ rule peptide_pdbs:
     input:
         pairs = f"{OUT}/pairs.tsv",
     output:
-        marker = f"{OUT}/pep_pdb/.written",
+        marker = f"{STATE}/pep_pdb/.written",
     params:
-        pair_cif_dir = f"{OUT}/cif",
-        pep_pdb_dir  = f"{OUT}/pep_pdb",
+        pair_cif_dir = f"{STATE}/cif",
+        pep_pdb_dir  = f"{STATE}/pep_pdb",
     script:
         "../scripts/write_peptide_pdbs.py"
 
 rule signa:
     input:
-        marker = f"{OUT}/pep_pdb/.written",
+        marker = f"{STATE}/pep_pdb/.written",
     output:
         signatures = f"{OUT}/struct_signatures.csv",
     threads: config["compute"]["threads"]
     params:
         signa_dir    = config["machine"]["signa_dir"],
-        pep_pdb_dir  = f"{OUT}/pep_pdb",
-        ckpt         = f"{OUT}/.checkpoint/signa",
+        pep_pdb_dir  = f"{STATE}/pep_pdb",
+        ckpt         = f"{STATE}/checkpoint/signa",
         cutoff_limit = config["signatures"]["acsm_cutoff_limit"],
         cutoff_step  = config["signatures"]["acsm_cutoff_step"],
         cumulative   = config["signatures"]["acsm_cumulative"],
@@ -86,9 +86,9 @@ rule freesasa:
         surface = f"{OUT}/surface.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir       = f"{OUT}/cif",
+        cif_dir       = f"{STATE}/cif",
         bsa_threshold = config["cutoffs"]["bsa_threshold_A2"],
-        ckpt          = f"{OUT}/.checkpoint/freesasa",
+        ckpt          = f"{STATE}/checkpoint/freesasa",
     script:
         "../scripts/run_freesasa.py"
 
@@ -99,9 +99,9 @@ rule interface:
         interface = f"{OUT}/interface.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir = f"{OUT}/cif",
+        cif_dir = f"{STATE}/cif",
         cutoff  = config["cutoffs"]["interaction_distance_A"],
-        ckpt    = f"{OUT}/.checkpoint/interface",
+        ckpt    = f"{STATE}/checkpoint/interface",
     script:
         "../scripts/interface_residues.py"
 
@@ -113,6 +113,6 @@ rule metadata:
     threads: config["compute"]["threads"]
     params:
         cif_dir = config["machine"]["cif_dir"],
-        ckpt    = f"{OUT}/.checkpoint/metadata",
+        ckpt    = f"{STATE}/checkpoint/metadata",
     script:
         "../scripts/metadata.py"

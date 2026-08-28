@@ -14,7 +14,7 @@ sample:
   seed: 42        # seeded-random sample across all downloaded oracle IDs (reproducible)
 
 # ---- data snapshot ----
-pdb_snapshot_date: "2025-09-08"
+pdb_snapshot_date: "2026-08-27"
 
 # ---- selection / cutoffs ----
 cutoffs:
@@ -62,7 +62,10 @@ compute:
                   # the whole parallelism tuning step — no code change needed.
 
 paths:
-  results_dir: "results"
-  
+  results_dir: "results"   # DERIVED outputs (TSVs/CSVs/report) — safe to wipe; rebuilt from state
+  state_dir:   "state"     # DURABLE database memory: per-entry checkpoints + extracted
+                           # structures. PRESERVE & BACK UP between releases — this is what
+                           # lets an update fill in only new PDB entries. (git-ignored)
+
 clusters:
   legacy_dir: "~/propedia26-sm/data/clusters_v15"

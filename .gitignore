@@ -11,6 +11,10 @@
 # snakemake internals & generated outputs
 /.snakemake/
 /results/
+# durable database state (checkpoints + extracted structures) — preserve/back up, don't commit
+/state/
+# dated release snapshots (large deliverables) — don't commit
+/releases/
 /resources/
 **/__pycache__/
 # generated artifacts

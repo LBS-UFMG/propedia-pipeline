@@ -11,38 +11,38 @@ rule multipro_cifs:
     input:
         multipro = f"{OUT}/multipro.tsv",
     output:
-        marker = f"{OUT}/multipro_cif/.written",
+        marker = f"{STATE}/multipro_cif/.written",
     params:
         cif_dir     = config["machine"]["cif_dir"],
-        cif_out_dir = f"{OUT}/multipro_cif",
+        cif_out_dir = f"{STATE}/multipro_cif",
     script:
         "../scripts/multipro_cifs.py"
 
 rule multipro_surface:
     input:
         multipro = f"{OUT}/multipro.tsv",
-        marker   = f"{OUT}/multipro_cif/.written",
+        marker   = f"{STATE}/multipro_cif/.written",
     output:
         surface = f"{OUT}/multipro_surface.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir = f"{OUT}/multipro_cif",
-        ckpt    = f"{OUT}/.checkpoint/multipro_surface",
+        cif_dir = f"{STATE}/multipro_cif",
+        ckpt    = f"{STATE}/checkpoint/multipro_surface",
     script:
         "../scripts/multipro_surface.py"
 
 rule multipro_prodigy:
     input:
         multipro = f"{OUT}/multipro.tsv",
-        marker   = f"{OUT}/multipro_cif/.written",
+        marker   = f"{STATE}/multipro_cif/.written",
     output:
         prodigy = f"{OUT}/multipro_prodigy.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir         = f"{OUT}/multipro_cif",
+        cif_dir         = f"{STATE}/multipro_cif",
         distance_cutoff = config["prodigy"]["distance_cutoff"],
         temperature     = config["prodigy"]["temperature"],
-        ckpt            = f"{OUT}/.checkpoint/multipro_prodigy",
+        ckpt            = f"{STATE}/checkpoint/multipro_prodigy",
     script:
         "../scripts/multipro_prodigy.py"
 

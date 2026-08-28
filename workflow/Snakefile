@@ -1,7 +1,8 @@
 configfile: "config/config.yaml"
 
-MODE = config["mode"]
-OUT  = f"{config['paths']['results_dir']}/{MODE}"     # results/sample or results/full
+MODE  = config["mode"]
+OUT   = f"{config['paths']['results_dir']}/{MODE}"    # DERIVED outputs (disposable)
+STATE = f"{config['paths']['state_dir']}/{MODE}"      # DURABLE state: checkpoints + structures
 
 include: "rules/01_collect.smk"
 include: "rules/02_download.smk"
@@ -12,6 +13,7 @@ include: "rules/06_ml.smk"
 include: "rules/07_validate.smk"
 include: "rules/08_assemble.smk"
 include: "rules/09_multipro.smk"
+include: "rules/10_release.smk"
 
 rule all:
     input:

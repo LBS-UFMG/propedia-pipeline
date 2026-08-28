@@ -44,13 +44,18 @@ against a reference release.
 │   └── scripts/               # the Python each rule runs
 ├── docs/
 │   └── reproduction_notes.md  # detailed technical log of every stage + known caveats
-└── results/
-    ├── sample/                # output of sample mode (git-ignored)
-    └── full/                  # output of full mode  (git-ignored)
+├── state/                     # DURABLE db memory: checkpoints + extracted structures
+│   └── <mode>/                #   (git-ignored; PRESERVE & back up — enables incremental updates)
+├── results/                   # DERIVED outputs (TSVs/CSVs/report); disposable, rebuilt from state
+│   └── <mode>/
+└── releases/                  # dated release snapshots + provenance manifests (git-ignored)
+    └── propedia-<date>/
 ```
 
-`config/` and `workflow/` are the code (version them). `results/` is disposable output —
-a release is fully described by the config + git commit + tool versions.
+`config/` and `workflow/` are the code (version them). `results/` is disposable (rebuilt
+from `state/`). `state/` is the durable database memory — preserve it between releases so
+an update only fills in new PDB entries. A release is fully described by its manifest
+(config + git commit + snapshot date).
 
 ---
 
@@ -128,12 +133,47 @@ Two consequences:
 - **Resumable at per-entry granularity.** If the run is interrupted (kill, crash, SSH
   drop, power), just re-run the **same command**. Finished stages are skipped; an
   interrupted stage resumes from its checkpoints and only computes the entries it hadn't
-  finished — it does **not** recompute from zero. Checkpoints live in
-  `results/<mode>/.checkpoint/` (disposable, git-ignored).
+  finished — it does **not** recompute from zero. This state lives in `state/<mode>/`
+  (see **Durable state** below).
   - After a hard kill, run `snakemake --unlock` once before resuming.
-  - To force a clean recompute of a stage, delete its dir under
-    `results/<mode>/.checkpoint/` (or bump the stage script's `VERSION`, which
-    auto-invalidates its checkpoints). Changing a stage's params also auto-invalidates.
+  - To force a clean recompute of a stage, delete `state/<mode>/checkpoint/<stage>/`
+    (or bump the stage script's `VERSION`, which auto-invalidates its checkpoints).
+    Changing a stage's params also auto-invalidates.
+
+### Durable state, updates, and releases
+
+Two output trees, and the distinction matters:
+
+- **`state/<mode>/`** — the **durable database memory**: per-entry checkpoints plus the
+  extracted per-pair structures (`cif/`, `pep_pdb/`, `multipro_cif/`, `cocada/`).
+  **Preserve and back this up between releases.** It is what lets an update process only
+  the *new* PDB entries. (git-ignored; not disposable.)
+- **`results/<mode>/`** — **derived** TSVs/CSVs and the report. Cheap to rebuild from
+  `state/`; safe to wipe.
+
+**Updating the database** (the production workflow): bump `pdb_snapshot_date` in the
+config and re-run full mode with the *same code*. The download fetches only newly
+released CIFs; every stage finds existing entries in `state/` and **skips them**,
+computing only the new PDB entries; the CSVs are rebuilt with old + new together. Keep
+`state/full/` intact and this is incremental — wipe it and it rebuilds from scratch
+(still correct, just slow).
+
+> Changing a stage's *logic* (bumping its `VERSION`) intentionally recomputes that stage
+> for **all** entries, so a release is internally consistent rather than a mix of old and
+> new logic.
+>
+> **Known gap:** the legacy sequence/interface/binding clusters (`is_leader`, `leader_id`)
+> are inherited from frozen tool outputs and are **not** recomputed, so brand-new entries
+> get blank legacy-cluster columns until those tools are re-run. (The `seq100`/CNR cluster
+> *is* recomputed.)
+
+**Cutting a release:** after a run finishes, snapshot the deliverables into a dated,
+immutable directory with a provenance manifest (snapshot date, git commit, tool config,
+entry counts):
+```bash
+snakemake --cores 8 --config mode=full release
+```
+→ `releases/propedia-<snapshot_date>/{propedia.csv, multipro_final.csv, reproduction_report.txt, manifest.json}`
 
 **Other notes:**
 - The **CIF download** is separately incremental (skips validated files); it too resumes.
