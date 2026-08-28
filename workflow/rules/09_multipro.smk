@@ -55,6 +55,7 @@ rule multipro_assemble:
         metadata  = f"{OUT}/metadata.tsv",
         interface = f"{OUT}/interface.tsv",
         legacy    = f"{OUT}/legacy_clusters.tsv",
+        provenance = f"{OUT}/provenance.tsv",
     output:
         csv = f"{OUT}/multipro_final.csv",
     script:

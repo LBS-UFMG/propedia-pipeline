@@ -17,5 +17,7 @@ rule validate:
         oracle_csv      = config["machine"]["oracle_csv"],
         mode            = config["mode"],
         multipro_oracle = config["machine"]["multipro_oracle_csv"],
+        snapshot_date   = config["pdb_snapshot_date"],
+        releases_dir    = "releases",
     script:
         "../scripts/validate.py"

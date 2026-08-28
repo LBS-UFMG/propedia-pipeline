@@ -2,7 +2,9 @@
 write a human-readable reproduction report. This is the pipeline's final target,
 so `snakemake` ends by PROVING the rebuild against the published database."""
 import csv
+import glob
 import math
+import os
 import sys
 
 
@@ -109,7 +111,42 @@ def check_multipro_csv(path, oracle_path):
     for c in exact:
         hits[c] = sum(1 for r in overlap
                       if (r.get(c) or "").strip() == (oracle[r["cluster_id"]].get(c) or "").strip())
-    return header == oheader, len(rows), len(overlap), hits
+    # additive columns (e.g. FIRST_RELEASE) are appended after the sacred v4 order
+    return header[:len(oheader)] == oheader, len(rows), len(overlap), hits
+
+
+def _load_release_csv(path):
+    with open(path) as fh:
+        return {r["id"]: r for r in csv.DictReader(fh, delimiter=";")}
+
+
+def release_diff(current_csv, releases_dir, current_snapshot):
+    """Diff the current propedia.csv against the newest PRIOR release (skipping the
+    current snapshot's own release dir). Returns a summary dict, or None if this is
+    the first build (no prior release)."""
+    cur_dir = f"propedia-{current_snapshot}"
+    prev = None
+    for d in sorted(glob.glob(os.path.join(releases_dir, "propedia-*")), reverse=True):
+        csv_path = os.path.join(d, "propedia.csv")
+        if os.path.basename(d) != cur_dir and os.path.exists(csv_path):
+            prev = (os.path.basename(d), csv_path)
+            break
+    if prev is None:
+        return None
+
+    cur = _load_release_csv(current_csv)
+    old = _load_release_csv(prev[1])
+    cur_ids, old_ids = set(cur), set(old)
+    common = cur_ids & old_ids
+    common_cols = (set(next(iter(cur.values())).keys()) &
+                   set(next(iter(old.values())).keys())) if cur and old else set()
+    changed = sum(1 for i in common
+                  if any(cur[i].get(c) != old[i].get(c) for c in common_cols))
+    return {
+        "prev": prev[0], "prev_n": len(old_ids), "cur_n": len(cur_ids),
+        "added": len(cur_ids - old_ids), "removed": len(old_ids - cur_ids),
+        "common": len(common), "changed": changed,
+    }
 
 
 def main():
@@ -172,6 +209,20 @@ def main():
     lines.append("   note: leader_id is inherited (not recomputed); PROTEIN_CHAIN/"
                  "count/TITLE deltas trace to the terminal-X convention. See "
                  "docs/reproduction_notes.md")
+
+    # release-to-release diff (production update view): what changed vs the last release
+    diff = release_diff(inp.propedia, getattr(p, "releases_dir", "releases"),
+                        p.snapshot_date)
+    lines.append(f"\n[Release diff vs previous]  (this snapshot: {p.snapshot_date})")
+    if diff is None:
+        lines.append("   no prior release found — this is the first build")
+    else:
+        lines.append(f"   previous release : {diff['prev']}")
+        lines.append(f"   entries: {diff['prev_n']} -> {diff['cur_n']}  "
+                     f"(+{diff['added']} new, -{diff['removed']} removed, "
+                     f"{diff['common']} carried over)")
+        lines.append(f"   carried-over entries with any changed column: {diff['changed']}"
+                     f"  ({pct(diff['changed'], diff['common'])})")
 
     lines.append("\n" + "=" * 62)
     lines.append("Discrepancies (extraction seq <100%, PRODIGY/CNR deltas) trace")

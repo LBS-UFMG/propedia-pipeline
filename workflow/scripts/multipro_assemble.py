@@ -31,6 +31,7 @@ V4_ORDER = [
     "count", "cluster_id", "ASA_Complex", "ASA_Protein", "ASA_Peptide",
     "BProA", "BPepA", "BPP%", "BSA",
 ]
+ADDITIVE = ["FIRST_RELEASE"]   # appended after the sacred v4 order
 
 # multipro physchem suffix -> pep-pro physchem long-field
 PHYS = {"MW": "MW", "pI": "pI", "InstabilityIndex": "Instability",
@@ -82,12 +83,13 @@ def main():
     interface = load_tsv(inp.interface)
     legacy = load_tsv(inp.legacy)
     physchem = load_physchem(inp.physchem)
+    provenance = load_tsv(inp.provenance)
 
     def phys(eid, ctype, field):
         return (physchem.get(eid, {}).get(ctype) or {}).get(field, "")
 
     with open(snakemake.output.csv, "w") as fh:            # noqa: F821
-        fh.write(";".join(V4_ORDER) + "\n")
+        fh.write(";".join(V4_ORDER + ADDITIVE) + "\n")
         for r in mp:
             cid = r["cluster_id"]
             items = r["items"].split(":")
@@ -126,8 +128,11 @@ def main():
                 else:
                     v = ""
                 row.append(clean(v))
+            # additive: FIRST_RELEASE of the entry (from items[0]'s pep-pro provenance)
+            row.append(clean((provenance.get(i0) or {}).get("FIRST_RELEASE", "")))
             fh.write(";".join(row) + "\n")
-    print(f"DONE assembled {len(mp)} multipro rows x {len(V4_ORDER)} cols", file=sys.stderr)
+    print(f"DONE assembled {len(mp)} multipro rows x {len(V4_ORDER + ADDITIVE)} cols",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":
