@@ -116,3 +116,18 @@ rule metadata:
         ckpt    = f"{STATE}/checkpoint/metadata",
     script:
         "../scripts/metadata.py"
+
+rule pisa:
+    input:
+        pairs    = f"{OUT}/pairs.tsv",
+        metadata = f"{OUT}/metadata.tsv",     # X-ray filter (STRUCTURE_METHOD)
+        done     = f"{OUT}/interim/download_cifs.done",   # needs the full CIFs
+    output:
+        pisa = f"{OUT}/pisa.tsv",
+    threads: config["compute"]["threads"]
+    params:
+        cif_dir  = config["machine"]["cif_dir"],   # full mmCIF (has _cell/_symmetry)
+        ccp4_dir = config["machine"]["ccp4_dir"],
+        ckpt     = f"{STATE}/checkpoint/pisa",
+    script:
+        "../scripts/run_pisa.py"

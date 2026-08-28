@@ -38,7 +38,11 @@ V15_ORDER = [
     "protein_pI",
     "seq100_clusters", "sequence-cluster",
 ]
-ADDITIVE = ["PEPTIDE_ORGANISM", "PROTEIN_ORGANISM", "FIRST_RELEASE"]
+PISA_COLS = ["pisa_status", "pisa_assembly_done", "pisa_n_interfaces",
+             "pisa_interface_id", "pisa_chain_1", "pisa_chain_2", "pisa_css",
+             "pisa_area", "pisa_solv_en", "pisa_pvalue", "pisa_tipo",
+             "pisa_n_hbonds", "pisa_n_saltbridges"]
+ADDITIVE = ["PEPTIDE_ORGANISM", "PROTEIN_ORGANISM", "FIRST_RELEASE"] + PISA_COLS
 
 # physchem long-field -> v15 suffix
 PHYS_SUFFIX = {
@@ -94,11 +98,13 @@ def clean(v):
 
 
 def value(col, eid, pair, surface, prodigy, interface, metadata, cnr,
-          physchem, therapeutic, legacy, provenance):
+          physchem, therapeutic, legacy, provenance, pisa):
     if col == "id":
         return eid
     if col == "FIRST_RELEASE":
         return (provenance.get(eid) or {}).get("FIRST_RELEASE", "")
+    if col.startswith("pisa_"):
+        return (pisa.get(eid) or {}).get(col, "")
     if col in BLANK_COLS:
         return ""
     if col in THERAP_COLS:
@@ -135,6 +141,7 @@ def main():
     therapeutic = load_tsv(inp.therapeutic)
     legacy = load_tsv(inp.legacy)
     provenance = load_tsv(inp.provenance)
+    pisa = load_tsv(inp.pisa)
 
     # master = extracted pairs that passed BSA>0 (present in surface), sorted by id
     kept = [r for r in pairs if r["id"] in surface]
@@ -147,7 +154,7 @@ def main():
             eid = r["id"]
             row = [clean(value(c, eid, r, surface, prodigy, interface,
                                metadata, cnr, physchem, therapeutic, legacy,
-                               provenance))
+                               provenance, pisa))
                    for c in cols]
             fh.write(";".join(row) + "\n")
     print(f"DONE assembled {len(kept)} rows x {len(cols)} cols", file=sys.stderr)

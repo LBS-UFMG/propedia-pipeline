@@ -21,6 +21,7 @@ rule assemble:
         therapeutic = f"{OUT}/therapeutic.tsv",
         legacy      = f"{OUT}/legacy_clusters.tsv",
         provenance  = f"{OUT}/provenance.tsv",
+        pisa        = f"{OUT}/pisa.tsv",
     output:
         csv = f"{OUT}/propedia.csv",
     script:
