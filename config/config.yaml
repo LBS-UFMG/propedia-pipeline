@@ -11,6 +11,7 @@ machine:
 mode: "sample"
 sample:
   size: 300
+  seed: 42        # seeded-random sample across all downloaded oracle IDs (reproducible)
 
 # ---- data snapshot ----
 pdb_snapshot_date: "2025-09-08"

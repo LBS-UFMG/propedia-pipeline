@@ -7,6 +7,7 @@ rule build_sample:
     params:
         cif_dir     = config["machine"]["cif_dir"],
         sample_size = config["sample"]["size"],
+        seed        = config["sample"]["seed"],
     script:
         "../scripts/build_sample.py"
 

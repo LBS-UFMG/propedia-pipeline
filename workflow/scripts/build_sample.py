@@ -1,7 +1,10 @@
-"""Pick a sample of oracle (v15) PDB IDs that are already downloaded,
-so we can validate extraction against the existing database right now."""
+"""Pick a REPRESENTATIVE, seeded-random sample of oracle (v15) PDB IDs that are
+already downloaded, so we validate against the existing database on an unbiased
+slice spanning all eras/sizes — not the alphabetically-first (oldest, smallest)
+entries the previous first-N logic returned. Reproducible via `sample.seed`."""
 import csv
 import os
+import random
 import sys
 
 
@@ -20,16 +23,16 @@ def main():
             if pid and pid not in seen:
                 seen.add(pid)
                 oracle.append(pid)
-    sample = []
-    for pid in oracle:
-        if os.path.exists(shard_path(p.cif_dir, pid)):
-            sample.append(pid)
-            if len(sample) >= p.sample_size:
-                break
+    # restrict to downloaded structures, then take a seeded-random sample across
+    # the whole downloaded set (unbiased w.r.t. deposition era / structure size)
+    present = [pid for pid in oracle if os.path.exists(shard_path(p.cif_dir, pid))]
+    rng = random.Random(p.seed)
+    k = min(p.sample_size, len(present))
+    sample = sorted(rng.sample(present, k))
     with open(snakemake.output.sample, "w") as fh:         # noqa: F821
         fh.write("\n".join(sample) + "\n")
-    print(f"sample: {len(sample)} of {p.sample_size} requested "
-          f"(from {len(oracle)} oracle IDs)", file=sys.stderr)
+    print(f"sample: {len(sample)} random of {len(present)} downloaded oracle IDs "
+          f"(seed={p.seed}, requested {p.sample_size})", file=sys.stderr)
 
 
 if __name__ == "__main__":
