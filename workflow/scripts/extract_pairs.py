@@ -11,6 +11,7 @@ read auth_asym_id from the written file, so chain selection stays unambiguous.
 """
 import gzip
 import os
+import shutil
 import sys
 import tempfile
 
@@ -110,6 +111,11 @@ def process(pid, p, io, parser):
 
 def main():
     p = snakemake.params                                   # noqa: F821
+    # start clean: a smaller/different sample than a previous run must not leave
+    # orphan per-pair CIFs behind (a folder-scanning stage like SIGNA would read
+    # them). Downstream rules key on ids from pairs.tsv, so a full clear is safe.
+    if os.path.isdir(p.cif_out_dir):
+        shutil.rmtree(p.cif_out_dir)
     os.makedirs(p.cif_out_dir, exist_ok=True)
     sample = [l.strip() for l in open(snakemake.input.ids) if l.strip()]  # noqa: F821
     parser = MMCIFParser(QUIET=True)

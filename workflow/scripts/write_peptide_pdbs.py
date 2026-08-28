@@ -9,6 +9,7 @@ signatures are computed on coordinates and ignore the chain label.
 """
 import csv
 import os
+import shutil
 import sys
 
 from Bio.PDB import MMCIFParser, PDBIO
@@ -19,6 +20,10 @@ from Bio.PDB.Structure import Structure
 def main():
     p = snakemake.params                                   # noqa: F821
     pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
+    # clear stale peptide PDBs first — SIGNA scans this whole folder, so orphans
+    # from a previous (larger) run would be counted as extra signatures.
+    if os.path.isdir(p.pep_pdb_dir):
+        shutil.rmtree(p.pep_pdb_dir)
     os.makedirs(p.pep_pdb_dir, exist_ok=True)
     parser = MMCIFParser(QUIET=True)
     io = PDBIO()

@@ -9,6 +9,7 @@ PRODIGY stages select on.
 """
 import csv
 import os
+import shutil
 import sys
 
 from Bio.PDB import MMCIFParser, MMCIFIO
@@ -18,6 +19,9 @@ import extract_pairs as ep
 
 def main():
     p = snakemake.params                                   # noqa: F821
+    # clear stale multi-chain CIFs from a previous run before writing
+    if os.path.isdir(p.cif_out_dir):
+        shutil.rmtree(p.cif_out_dir)
     os.makedirs(p.cif_out_dir, exist_ok=True)
     rows = list(csv.DictReader(open(snakemake.input.multipro), delimiter="\t"))  # noqa: F821
     parser = MMCIFParser(QUIET=True)
