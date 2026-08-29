@@ -7,10 +7,11 @@ It collects structures, extracts protein–peptide pairs, computes every feature
 signatures), clusters, trains therapeutic-peptide classifiers, and validates the result
 against a reference release.
 
-> **Status (read before running):** the pipeline architecture is complete and its DAG
-> is verified (`snakemake -n` passes). A few per-script parameter wirings still need to
-> be finished before a clean one-command run — see **[Current state](#current-state)**.
-> This is a working research pipeline, not yet a turnkey release.
+> **Status (read before running):** the pipeline builds the full database — every stage
+> is wired and the DAG is verified (`snakemake -n` passes), including the Multipro dataset,
+> the PISA biological-vs-crystal annotation, and the website `package` step. A few items
+> remain (PISA validation on a real CCP4 run, legacy-cluster recomputation, bulk-download
+> bundles) — see **[Current state](#current-state)**.
 
 ---
 
@@ -182,6 +183,16 @@ snakemake --cores 8 --config mode=full release
 ```
 → `releases/propedia-<snapshot_date>/{propedia.csv, multipro_final.csv, reproduction_report.txt, manifest.json}`
 
+**Packaging for the website:** build the propedia26 site file tree (per-entry CSVs in the
+site's v17 layout, per-entry contacts, the Explore summary TSV, BLAST subject FASTAs, the
+master bulk CSVs, and the cluster tables) into a local directory:
+```bash
+snakemake --cores 8 --config mode=full package
+```
+→ `results/<mode>/web/data/…` (or set `paths.web_dir`). This only **builds** the files
+locally; it does not deploy them. The pep-pro per-entry column order is pinned in
+`config/columns_peppro_v17.txt`; see `docs/propedia26_publishing.md` for the layout.
+
 **Other notes:**
 - The **CIF download** is separately incremental (skips validated files); it too resumes.
 - **Full mode is a long run** (hours to overnight). Give it enough RAM for the pool: the
@@ -206,9 +217,16 @@ snakemake --cores 8 --config mode=full release
 | `cocada` | interatomic contacts | COCaDA |
 | `ifeature` | sequence signatures (1248) | iFeature |
 | `peptide_pdbs` → `signa` | structural signatures (1800) | SIGNA (aCSM) |
+| `interface` | interface residues (≤6 Å) | Biopython |
+| `metadata` | PDB header fields (title, method, resolution, organism, …) | Biopython / mmCIF |
+| `pisa` | biological-vs-crystal interface annotation (CSS) | CCP4 PISA *(optional)* |
 | `cnr_cluster` | 100%-identity peptide clusters | — |
-| `ml_classifiers` | 6 therapeutic-class models | scikit-learn |
+| `legacy_clusters` | inherited sequence/interface/binding clusters | (frozen v15) |
+| `ml_classifiers` → `therapeutic` | 6 therapeutic-class models + per-entry scores | scikit-learn |
+| `multipro_*` | Multipro dataset (peptide vs. ≥2 protein chains) | (pipeline) |
+| `assemble` / `multipro_assemble` | final `propedia.csv` / `multipro_final.csv` | — |
 | `validate` | reproduction scorecard | — |
+| `package` | website file tree (per-entry CSVs, Explore TSV, BLAST FASTAs, …) | — |
 
 See `docs/reproduction_notes.md` for the validation results and every design decision.
 
@@ -221,19 +239,28 @@ extraction, physicochemistry, surface area (FreeSASA vs NACCESS, r≈1.0), and P
 reproduce the reference release; signatures, contacts, clustering, and ML are integrated
 with correct outputs. Details and caveats in `docs/reproduction_notes.md`.
 
-**Unfinished — needs doing before a clean full run:**
-1. **Wire two script params to the rules:** `run_prodigy.py` (read `pdb_dir`,
-   `distance_cutoff`, `temperature` from `snakemake.params`) and `write_peptide_pdbs.py`
-   (touch its `output.marker`). Others were run via a test harness and should be confirmed
-   against their rule signatures at first execution.
-2. **Not yet built (paper scope not fully covered):**
-   - **Multipro dataset** (peptide vs. ≥2 protein chains) — a whole second dataset.
-   - **Interface-residue** annotation column.
-   - A few **physicochemical columns** (atomic formula, atom count, extinction coefficient).
-   - Some **PDB metadata** columns (resolution, method, deposition date, title, organism).
-   - **Legacy clusters** (Hammock / MUSTANG / ProBiS) and the **PepBDB/PepBind** comparison.
-3. **Cleanup:** pin tool versions, add feature scaling to the ML step, vendor COCaDA at a
-   fixed tag instead of a config path.
+**Done (the paper scope is now covered):** the Multipro dataset, the interface-residue
+column, the extra physicochemical columns (atomic formula, atom count, extinction
+coefficient), the PDB metadata columns (resolution, method, deposition date, title,
+organism), ML feature scaling, the **PISA biological-vs-crystal interface annotation**
+(`pisa_interface_class` from PISA's CSS; per-entry + Multipro; answers the crystal-packing
+concern), and the **website packaging** step (`snakemake package`): per-entry CSVs in the
+site's v17 layout, the Explore summary TSV, BLAST subject FASTAs, the master bulk CSVs, and
+the cluster tables — all written to a local `web_dir` tree.
+
+**Remaining:**
+1. **PISA validation numbers** — the report block and `tests/smoke_test_pisa.py` are ready;
+   the concrete counts need a real CCP4 run (PISA is an optional external dependency; without
+   CCP4 the stage is skipped, see §1).
+2. **Legacy clusters are inherited, not recomputed.** The sequence/interface/binding clusters
+   and `is_leader`/`leader_id` come from frozen v15 tool outputs (Hammock/MUSTANG/ProBiS), so
+   brand-new entries get blank legacy-cluster columns until those tools are re-run. The
+   `seq100`/CNR cluster *is* recomputed. The **PepBDB/PepBind** cross-database comparison is
+   not automated.
+3. **Not yet produced** (planned for a later version): the bulk download ZIP bundles and the
+   ProBiS surface database.
+4. **Open (paper-revision items):** surface the ML performance in the main report, and
+   justify / offer alternatives for the selection cutoffs.
 
 **Known caveat that explains most discrepancies:** the reference DB counts terminal
 cap / modified residues as `X`; this pipeline counts only standard amino acids. This
