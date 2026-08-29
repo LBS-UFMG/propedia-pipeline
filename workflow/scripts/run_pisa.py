@@ -37,8 +37,13 @@ _CTR = itertools.count()
 # fields captured per interface (mirrors the lab pisa_css.py extraction)
 IFACE_FIELDS = ["interface_id", "tipo", "chain_1", "chain_2", "css", "area",
                 "solv_en", "pvalue", "n_hbonds", "n_saltbridges"]
-# pair-level output columns
-OUT_COLS = ["id", "pisa_status", "pisa_assembly_done", "pisa_n_interfaces",
+# pair-level output columns.  pisa_interface_class is the DERIVED biological-vs-crystal
+# annotation (the reviewer-requested read-out): biological / crystal-packing when PISA
+# gave a CSS for the pep-pro interface, indeterminate when it ran but could not score
+# this interface, not_applicable for non-X-ray methods (no crystal lattice => the
+# crystal-packing question does not arise), blank when PISA could not be assessed.
+OUT_COLS = ["id", "pisa_status", "pisa_interface_class",
+            "pisa_assembly_done", "pisa_n_interfaces",
             "pisa_interface_id", "pisa_chain_1", "pisa_chain_2", "pisa_css",
             "pisa_area", "pisa_solv_en", "pisa_pvalue", "pisa_tipo",
             "pisa_n_hbonds", "pisa_n_saltbridges"]
@@ -170,20 +175,80 @@ def cross(pep, prot, record):
     return max(matches, key=lambda f: _fnum(f.get("area")))
 
 
+def _css_val(iface):
+    """CSS as float, or None if PISA emitted no parseable score for this interface."""
+    try:
+        return float((iface or {}).get("css", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def classify(status, iface, threshold):
+    """Derived biological-vs-crystal label for the pep-pro interface.
+
+    biological / crystal-packing  -> PISA scored this interface (css >=/< threshold)
+    indeterminate                 -> PISA ran but could not score this pep-pro interface
+    not_applicable                -> non-X-ray method: no crystal lattice, so there is no
+                                     crystal-packing artifact to flag
+    "" (blank)                    -> PISA could not be assessed (missing CIF / error / timeout)
+    """
+    if status == "not_xray":
+        return "not_applicable"
+    if status != "ok":
+        return ""                       # missing / error / timeout / xml_invalid
+    css = _css_val(iface)
+    if css is None:
+        return "indeterminate"          # ran, but no CSS for the matched interface (or none matched)
+    return "biological" if css >= threshold else "crystal-packing"
+
+
+def _write_blank(path, pairs, status):
+    """Emit a well-formed pisa.tsv where every pair carries `status` and blank PISA
+    fields. Lets the DAG complete (propedia.csv just has empty PISA columns) when PISA
+    cannot run, instead of erroring or perpetually retrying."""
+    with open(path, "w") as fh:
+        fh.write("\t".join(OUT_COLS) + "\n")
+        for r in pairs:
+            row = {c: "" for c in OUT_COLS}
+            row["id"] = r["id"]
+            row["pisa_status"] = status
+            fh.write("\t".join(str(row[c]) for c in OUT_COLS) + "\n")
+
+
 def main():
     p = snakemake.params                                   # noqa: F821
     ccp4_dir = os.path.expanduser(p.ccp4_dir)
     cfg_modelo = os.path.join(ccp4_dir, "share", "pisa", "pisa.cfg")
+    pisa_bin = os.path.join(ccp4_dir, "bin", "pisa")
+    on_missing = getattr(p, "on_missing", "skip")   # "skip" (turnkey) | "error" (enforce)
     timeout = getattr(p, "timeout", 600)   # per pisa call; a timed-out structure is
                                            # recorded (blank PISA), not retried
+    css_threshold = float(getattr(p, "css_biological_threshold", 0.5))
     threads = getattr(snakemake, "threads", 1) or 1        # noqa: F821
+
+    pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
+
+    # Turnkey degradation: CCP4/PISA is a heavy external dependency. If it is absent,
+    # don't wedge the whole build (or perpetually retry a missing binary) — either skip
+    # PISA with a clear per-entry status, or hard-fail if the run declared it required.
+    if not (os.path.exists(pisa_bin) and os.path.exists(cfg_modelo)):
+        msg = (f"PISA unavailable: expected `pisa` at {pisa_bin} and config at "
+               f"{cfg_modelo}. Install CCP4 and set machine.ccp4_dir to enable the "
+               f"biological-vs-crystal interface annotation.")
+        if on_missing == "error":
+            sys.exit("ERROR: " + msg + " (pisa.on_missing='error')")
+        print("=" * 78 + f"\nWARNING: {msg}\n"
+              "Proceeding WITHOUT PISA — every entry gets pisa_status='pisa_unavailable' "
+              "and blank PISA columns (pisa.on_missing='skip').\n" + "=" * 78,
+              file=sys.stderr)
+        _write_blank(snakemake.output.pisa, pairs, "pisa_unavailable")  # noqa: F821
+        return
 
     # CCP4 environment (inherited by the fork pool workers)
     os.environ.setdefault("CCP4", ccp4_dir)
     os.environ.setdefault("CLIBD", os.path.join(ccp4_dir, "lib", "data"))
     os.environ.setdefault("CCP4_SCR", tempfile.mkdtemp(prefix="ccp4_scr_"))
 
-    pairs = list(csv.DictReader(open(snakemake.input.pairs), delimiter="\t"))  # noqa: F821
     method = {r["id"]: r.get("STRUCTURE_METHOD", "")
               for r in csv.DictReader(open(snakemake.input.metadata), delimiter="\t")}  # noqa: F821
     # X-ray PDBs only (per our metadata); one entry per unique PDB id
@@ -195,6 +260,7 @@ def main():
                              id_of=lambda it: it[0], stage="pisa")
 
     n = ok = 0
+    classes = {}
     with open(snakemake.output.pisa, "w") as fh:           # noqa: F821
         fh.write("\t".join(OUT_COLS) + "\n")
         for r in pairs:
@@ -212,10 +278,15 @@ def main():
                 for k in IFACE_FIELDS:
                     row["pisa_" + k] = iface.get(k, "")
                 ok += 1
+            row["pisa_interface_class"] = classify(status, iface, css_threshold)
+            classes[row["pisa_interface_class"] or "blank"] = \
+                classes.get(row["pisa_interface_class"] or "blank", 0) + 1
             fh.write("\t".join(str(row[c]) for c in OUT_COLS) + "\n")
             n += 1
+    breakdown = ", ".join(f"{k}={classes[k]}" for k in sorted(classes))
     print(f"DONE pisa: {n} pairs, {ok} with a matched interface "
-          f"({len(xray_pdbs)} X-ray PDBs analysed)", file=sys.stderr)
+          f"({len(xray_pdbs)} X-ray PDBs analysed); "
+          f"interface_class[css>={css_threshold}]: {breakdown}", file=sys.stderr)
 
 
 if __name__ == "__main__":

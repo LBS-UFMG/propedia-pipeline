@@ -45,6 +45,20 @@ cocada:
   ph: 7.4
   version: "v1.6"
 
+pisa:
+  timeout: 600                 # seconds per pisa call; a timed-out structure is recorded blank
+  on_missing: "skip"           # CCP4/PISA absent: "skip" => build without PISA (blank cols,
+                               # pisa_status='pisa_unavailable'); "error" => fail the run.
+                               # Use "error" for the production release to enforce PISA.
+  # Derived biological-vs-crystal interface annotation (answers the "crystal-packing
+  # artifacts" reviewer comment). PISA's Complexation Significance Score (CSS, 0-1)
+  # measures how much an interface drives the biological assembly: high CSS => biological,
+  # ~0 => likely crystal packing. An entry is labelled biological when css >= this
+  # threshold, crystal-packing when below it, and indeterminate when PISA gave no CSS.
+  css_biological_threshold: 0.5   # 0.5 = PISA's "significant assembly driver" convention
+                                  # (working value; may be revisited before the production
+                                  # run). Set to 0 for the permissive "any nonzero CSS".
+
 signatures:
   acsm_cutoff_limit: 10
   acsm_cutoff_step: 0.2

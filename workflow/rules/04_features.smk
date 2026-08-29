@@ -130,5 +130,7 @@ rule pisa:
         ccp4_dir = config["machine"]["ccp4_dir"],
         ckpt     = f"{STATE}/checkpoint/pisa",
         timeout  = config.get("pisa", {}).get("timeout", 600),
+        css_biological_threshold = config.get("pisa", {}).get("css_biological_threshold", 0.5),
+        on_missing = config.get("pisa", {}).get("on_missing", "skip"),
     script:
         "../scripts/run_pisa.py"

@@ -503,3 +503,44 @@ the point is that the pipeline *processes* it. A real run evaluates all
 4V4G (717k atoms), ~40 s each for 8GYM/7N6G; every downstream stage (write,
 FreeSASA, interface, PRODIGY) is sub-second. `gemmi` would parse ~10–50× faster
 if the full-snapshot parse time over many 100k-atom entries becomes a concern.
+
+
+## PISA interface classification — ADDED (biological vs crystal-packing)
+
+Motivation: NAR referee 2's major comment — a distance + BSA cutoff cannot separate
+biological interfaces from crystal-packing contacts, so a full-database download used as
+an ML training set can carry systematic artifact labels. PISA (CCP4 `pisa`) assesses,
+per crystallographic interface, how much it drives the biological assembly.
+
+Method: run `pisa -analyse` then `-xml interfaces` on the COMPLETE mmCIF (needs
+`_cell`/`_symmetry`; the extracted per-pair CIFs lack CRYST1 and cannot be used),
+checkpointed per PDB. For each pep-pro pair, cross to the PISA interface whose unordered
+chain set == {pep_chain, prot_chain} with the largest area. We record the raw PISA fields
+(css, area, solv_en, pvalue, type, n_hbonds, n_saltbridges) AND derive `pisa_interface_class`
+from the **Complexation Significance Score (CSS, 0–1)**:
+  css ≥ `pisa.css_biological_threshold` (default 0.5) → **biological**;
+  below → **crystal-packing**; PISA ran but no CSS for the matched interface →
+  **indeterminate**. The threshold is a config knob applied at MERGE time, so re-labelling
+  never re-runs PISA (checkpoints stay valid).
+
+**X-ray only, by design.** Cryo-EM/NMR have no crystal lattice, so the crystal-packing
+question does not arise; those entries are filtered via our own metadata (STRUCTURE_METHOD)
+and labelled **not_applicable** rather than blank — i.e. "no artifact to flag", not "not
+assessed". Entries where PISA is unavailable/failed carry `pisa_status` (missing /
+timeout / error / pisa_unavailable) and a blank class.
+
+**Multipro:** aggregated from the pep-pro `pisa.tsv` via `items` (no separate PISA run):
+per-protein-chain class + CSS are colon-joined in items order, and one entry-level class is
+`biological` iff the peptide forms ≥1 biological interface anywhere in the assembly.
+
+**Turnkey dependency:** CCP4 ≥ 9 is optional. `pisa.on_missing` = `skip` (default; build
+without PISA, `pisa_status='pisa_unavailable'`) or `error` (require it, for the production
+release). See README.
+
+**Validation (in `reproduction_report.txt`, `[PISA interface classification]`):** there is
+no v15 oracle column for PISA, so it is validated as coverage + discrimination. Headline
+number: every row in `propedia.csv` already passed BSA>0, so the count PISA still flags
+`crystal-packing` is exactly the discrimination a distance+BSA cutoff cannot make. The
+report also prints the class/status breakdown and mean BSA and predicted dG for biological
+vs crystal-packing (expected: biological interfaces have larger BSA and more favourable dG).
+Populate the concrete counts here from a production CCP4 run.

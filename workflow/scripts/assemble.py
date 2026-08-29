@@ -38,7 +38,8 @@ V15_ORDER = [
     "protein_pI",
     "seq100_clusters", "sequence-cluster",
 ]
-PISA_COLS = ["pisa_status", "pisa_assembly_done", "pisa_n_interfaces",
+PISA_COLS = ["pisa_status", "pisa_interface_class",
+             "pisa_assembly_done", "pisa_n_interfaces",
              "pisa_interface_id", "pisa_chain_1", "pisa_chain_2", "pisa_css",
              "pisa_area", "pisa_solv_en", "pisa_pvalue", "pisa_tipo",
              "pisa_n_hbonds", "pisa_n_saltbridges"]

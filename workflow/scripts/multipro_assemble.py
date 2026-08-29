@@ -1,6 +1,6 @@
-"""Multipro Phase 2d: assemble the 64-column multipro CSV (exact v15 order) by
+"""Multipro Phase 2d: assemble the multipro CSV (exact v4 order + additive columns) by
 joining Phase 1 grouping + Phase 2b surface + Phase 2c PRODIGY with the pep-pro
-outputs (physchem/metadata/interface/legacy), joined via `items`. Single-value
+outputs (physchem/metadata/interface/legacy/pisa), joined via `items`. Single-value
 columns come from items[0]; per-protein-chain columns are colon-joined in items
 order. One source of truth -- nothing is recomputed here.
 """
@@ -31,7 +31,31 @@ V4_ORDER = [
     "count", "cluster_id", "ASA_Complex", "ASA_Protein", "ASA_Peptide",
     "BProA", "BPepA", "BPP%", "BSA",
 ]
-ADDITIVE = ["FIRST_RELEASE"]   # appended after the sacred v4 order
+# Appended after the sacred v4 order. The PISA columns are the multipro read-out of the
+# biological-vs-crystal annotation (crystal-packing reviewer comment): a peptide in a
+# multipro assembly touches several protein chains, so we report the per-chain PISA class
+# and CSS (colon-joined in items order, parity with PROTEIN_CHAIN) plus ONE aggregate call
+# for the entry. Aggregated from the pep-pro pisa.tsv via `items` -- no PISA re-run.
+ADDITIVE = ["FIRST_RELEASE", "pisa_interface_class",
+            "pisa_interface_class_per_chain", "pisa_css_per_chain"]
+
+
+def aggregate_pisa_class(classes):
+    """One biological/crystal call for a multipro entry from its per-protein-chain classes.
+    A peptide that forms >=1 biological interface within the assembly is biological; if all
+    scored interfaces are crystal-packing it is crystal-packing; non-X-ray => not_applicable;
+    otherwise indeterminate; blank only when PISA could not be assessed for any constituent."""
+    cs = list(classes)
+    if any(c == "biological" for c in cs):
+        return "biological"
+    if cs and all(c == "not_applicable" for c in cs):
+        return "not_applicable"
+    nonblank = [c for c in cs if c and c != "not_applicable"]
+    if not nonblank:
+        return "not_applicable" if any(c == "not_applicable" for c in cs) else ""
+    if all(c == "crystal-packing" for c in nonblank):
+        return "crystal-packing"
+    return "indeterminate"          # a mix incl. indeterminate, none biological
 
 # multipro physchem suffix -> pep-pro physchem long-field
 PHYS = {"MW": "MW", "pI": "pI", "InstabilityIndex": "Instability",
@@ -84,6 +108,7 @@ def main():
     legacy = load_tsv(inp.legacy)
     physchem = load_physchem(inp.physchem)
     provenance = load_tsv(inp.provenance)
+    pisa = load_tsv(inp.pisa)          # pep-pro PISA, keyed by pair id (== multipro item)
 
     def phys(eid, ctype, field):
         return (physchem.get(eid, {}).get(ctype) or {}).get(field, "")
@@ -130,6 +155,13 @@ def main():
                 row.append(clean(v))
             # additive: FIRST_RELEASE of the entry (from items[0]'s pep-pro provenance)
             row.append(clean((provenance.get(i0) or {}).get("FIRST_RELEASE", "")))
+            # additive: PISA biological-vs-crystal read-out, aggregated from the
+            # per-protein-chain pep-pro interfaces (colon-joined in items order).
+            per_chain_class = [(pisa.get(i) or {}).get("pisa_interface_class", "") for i in items]
+            per_chain_css = [(pisa.get(i) or {}).get("pisa_css", "") for i in items]
+            row.append(clean(aggregate_pisa_class(per_chain_class)))
+            row.append(clean(colon(per_chain_class)))
+            row.append(clean(colon(per_chain_css)))
             fh.write(";".join(row) + "\n")
     print(f"DONE assembled {len(mp)} multipro rows x {len(V4_ORDER + ADDITIVE)} cols",
           file=sys.stderr)

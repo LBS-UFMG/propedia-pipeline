@@ -72,6 +72,7 @@ rule multipro_assemble:
         interface = f"{OUT}/interface.tsv",
         legacy    = f"{OUT}/legacy_clusters.tsv",
         provenance = f"{OUT}/provenance.tsv",
+        pisa      = f"{OUT}/pisa.tsv",            # pep-pro PISA, aggregated per multipro entry
     output:
         csv = f"{OUT}/multipro_final.csv",
     script:

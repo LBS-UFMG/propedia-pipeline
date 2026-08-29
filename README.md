@@ -26,6 +26,13 @@ against a reference release.
   - COCaDA — `git clone https://github.com/LBS-UFMG/COCaDA` (checkout the tag you want; ≥ v1.5 for the `-c/-inter/-ph/-s` flags)
   - SIGNA — `git clone https://github.com/LBS-UFMG/signa`
   - iFeature — `git clone https://github.com/Superzchen/iFeature`
+  - **CCP4 ≥ 9** (for PISA) — provides `bin/pisa` + `share/pisa/pisa.cfg`; set `machine.ccp4_dir`.
+    PISA powers the **biological-vs-crystal-packing** interface annotation
+    (`pisa_interface_class`). It is **optional**: if CCP4 is absent, the `pisa` stage
+    honours `pisa.on_missing` — `"skip"` (default) builds without PISA (blank PISA
+    columns, `pisa_status='pisa_unavailable'`); set it to `"error"` for a production
+    release to require PISA. PISA runs on **X-ray** entries only (no crystal lattice for
+    cryo-EM/NMR → `pisa_interface_class='not_applicable'`).
 - **Disk:** ~30–60 GB for the CIF download (full mode).
 - **Reference DB** (for validation): a Propedia release CSV (e.g. `propedia26_v15.csv`),
   semicolon-delimited.

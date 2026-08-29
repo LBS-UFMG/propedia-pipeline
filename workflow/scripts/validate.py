@@ -115,6 +115,48 @@ def check_multipro_csv(path, oracle_path):
     return header[:len(oheader)] == oheader, len(rows), len(overlap), hits
 
 
+def _mean(xs):
+    xs = [x for x in xs if x is not None]
+    return sum(xs) / len(xs) if xs else None
+
+
+def _f(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def check_pisa(propedia_path):
+    """PISA has no v15 oracle column, so validate it as coverage + discrimination.
+
+    The key read-out for the crystal-packing reviewer comment: every row in
+    propedia.csv already passed the BSA>0 filter, so the count of those PISA still
+    flags 'crystal-packing' is exactly how many interfaces a distance+BSA cutoff
+    could NOT have separated — the signal PISA adds. We also report mean BSA and mean
+    predicted dG for biological vs crystal-packing to show the classes separate."""
+    rows = list(csv.DictReader(open(propedia_path), delimiter=";"))
+    n = len(rows)
+    cls_counts, status_counts = {}, {}
+    bsa = {"biological": [], "crystal-packing": []}
+    dg = {"biological": [], "crystal-packing": []}
+    DG = "Predicted binding affinity (kcal.mol-1)"
+    for r in rows:
+        c = (r.get("pisa_interface_class") or "").strip() or "(blank)"
+        cls_counts[c] = cls_counts.get(c, 0) + 1
+        s = (r.get("pisa_status") or "").strip() or "(blank)"
+        status_counts[s] = status_counts.get(s, 0) + 1
+        if c in bsa:
+            bsa[c].append(_f(r.get("BSA")))
+            dg[c].append(_f(r.get(DG)))
+    scored = cls_counts.get("biological", 0) + cls_counts.get("crystal-packing", 0)
+    return {
+        "n": n, "cls": cls_counts, "status": status_counts, "scored": scored,
+        "bsa_bio": _mean(bsa["biological"]), "bsa_xtal": _mean(bsa["crystal-packing"]),
+        "dg_bio": _mean(dg["biological"]), "dg_xtal": _mean(dg["crystal-packing"]),
+    }
+
+
 def _load_release_csv(path):
     with open(path) as fh:
         return {r["id"]: r for r in csv.DictReader(fh, delimiter=";")}
@@ -191,6 +233,26 @@ def main():
             best[r["class"]] = (r["model"], auc)
     for cls, (m, auc) in best.items():
         lines.append(f"   {cls}: {m:18s} AUC={auc:.3f}")
+
+    pz = check_pisa(inp.propedia)
+    lines.append("\n[PISA interface classification — biological vs crystal-packing]")
+    lines.append(f"   entries (all pass BSA>0): {pz['n']}")
+    order = ["biological", "crystal-packing", "indeterminate", "not_applicable", "(blank)"]
+    for c in order + [k for k in sorted(pz["cls"]) if k not in order]:
+        if c in pz["cls"]:
+            lines.append(f"   class {c:16s}: {pz['cls'][c]}  ({pct(pz['cls'][c], pz['n'])})")
+    xtal = pz["cls"].get("crystal-packing", 0)
+    lines.append(f"   -> of {pz['scored']} PISA-scored interfaces, {xtal} "
+                 f"({pct(xtal, pz['scored'])}) look like crystal packing despite passing")
+    lines.append("      BSA>0 — the discrimination a distance+BSA cutoff cannot make.")
+    if pz["bsa_bio"] is not None and pz["bsa_xtal"] is not None:
+        lines.append(f"   mean BSA : biological {pz['bsa_bio']:.1f} vs crystal-packing "
+                     f"{pz['bsa_xtal']:.1f} A^2")
+    if pz["dg_bio"] is not None and pz["dg_xtal"] is not None:
+        lines.append(f"   mean dG  : biological {pz['dg_bio']:.2f} vs crystal-packing "
+                     f"{pz['dg_xtal']:.2f} kcal/mol")
+    lines.append(f"   PISA status breakdown: " +
+                 ", ".join(f"{k}={v}" for k, v in sorted(pz["status"].items())))
 
     p_oracle_header = list(next(csv.reader(open(p.oracle_csv), delimiter=";")))
     hdr, nrows, nov, hits = check_peppro_csv(inp.propedia, oracle)
