@@ -1,24 +1,21 @@
 """Structural signatures via SIGNA (aCSM-ALL). Runs on peptide-only PDBs.
 Propedia 26 params: cutoff_limit=10, cutoff_step=0.2, cumulative=True -> 1800 features.
 
-SIGNA is a folder tool (one call over a whole folder). To make it resumable and
-parallel, the peptide PDBs are split into CHUNKS; each chunk runs SIGNA over a
-temp dir of symlinks and writes a durable chunk CSV. Chunk files are
-content-addressed by a hash of their member ids, so an interrupted run resumes
-(existing chunks skipped) and a changed sample auto-invalidates only the chunks
-that changed. The final CSV is the concatenation of the current chunks."""
+To make SIGNA resumable and parallel, the peptide PDBs are split into CHUNKS; each
+chunk computes signatures (calling SIGNA's per-file ``read()``) and writes a durable
+chunk CSV. Chunk files are content-addressed by a hash of their member ids, so an
+interrupted run resumes (existing chunks skipped) and a changed sample auto-invalidates
+only the chunks that changed. The final CSV is the concatenation of the current chunks."""
 import concurrent.futures as cf
-import csv
+import contextlib
 import hashlib
 import os
-import shutil
 import sys
-import tempfile
 
 import checkpoint
 
-VERSION = "1"
-CHUNK = 500              # peptides per SIGNA invocation
+VERSION = "2"           # bump: per-file read() (SystemExit-safe) instead of read_folder
+CHUNK = 500             # peptides per chunk (checkpoint granularity)
 
 
 def _chunk_key(names):
@@ -26,32 +23,39 @@ def _chunk_key(names):
 
 
 def run_chunk(item):
-    """Run SIGNA over one chunk of peptide PDBs -> normalized chunk CSV (id,feat...)."""
+    """Compute aCSM signatures for one chunk of peptide PDBs -> chunk CSV (id,feat...).
+
+    Calls SIGNA's ``read()`` PER FILE (which is exactly what ``read_folder`` does
+    internally) so we can catch the ``exit()`` SIGNA calls on a degenerate peptide
+    ("No match found." -> bare ``exit()``, i.e. SystemExit). read_folder is all-or-
+    nothing: one such peptide aborts the whole batch AND kills the host process. Here a
+    bad peptide is skipped and counted; the rest of the chunk still gets written. Returns
+    (out_csv, n_skipped)."""
     signa_dir, pep_dir, names, out_csv, cl, cs, cum = item
-    sys.path.insert(0, signa_dir)
+    if signa_dir not in sys.path:
+        sys.path.insert(0, signa_dir)
     import signa                                           # noqa: E402
-    tmp = tempfile.mkdtemp()
-    try:
+    tmp_out = out_csv + ".tmp"
+    skipped = 0
+    with open(tmp_out, "w") as fout, open(os.devnull, "w") as devnull:
         for nm in names:
-            os.symlink(os.path.abspath(os.path.join(pep_dir, nm)),
-                       os.path.join(tmp, nm))
-        raw = out_csv + ".raw"
-        signa.read_folder(folder=tmp, signa_type="acsm-all", cumulative=cum,
-                          output=raw, cutoff_limit=cl, cutoff_step=cs, format="pdb")
-        # normalize the leading file PATH to the entry id, write atomically
-        tmp_out = out_csv + ".tmp"
-        with open(raw) as fin, open(tmp_out, "w") as fout:
-            for line in fin:
-                parts = line.rstrip("\n").split(",")
-                if not parts or not parts[0]:
-                    continue
-                eid = os.path.splitext(os.path.basename(parts[0]))[0]
-                fout.write(eid + "," + ",".join(parts[1:]) + "\n")
-        os.replace(tmp_out, out_csv)
-        os.remove(raw)
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-    return out_csv
+            path = os.path.abspath(os.path.join(pep_dir, nm))
+            eid = os.path.splitext(nm)[0]
+            try:
+                # mirror read_folder's positional call; verbose off; hush SIGNA's prints
+                with contextlib.redirect_stdout(devnull):
+                    sig = signa.read(path, "acsm-all", cl, cs, True, "ALL",
+                                     False, cum, ",", "AMBER")
+            except SystemExit:            # SIGNA exit() on empty/degenerate peptide
+                skipped += 1
+                continue
+            except Exception:             # any other SIGNA failure on one file -> skip it
+                skipped += 1
+                continue
+            if sig:
+                fout.write(eid + "," + str(sig).rstrip("\n") + "\n")
+    os.replace(tmp_out, out_csv)
+    return out_csv, skipped
 
 
 def main():
@@ -78,16 +82,22 @@ def main():
     print(f"[signa] {len(chunks)} chunks, {len(todo)} to compute (threads={threads})",
           file=sys.stderr)
 
+    skipped = 0
     if threads > 1 and todo:
         with cf.ProcessPoolExecutor(max_workers=threads) as ex:
-            for i, _ in enumerate(ex.map(run_chunk, todo), 1):
+            for i, (_, sk) in enumerate(ex.map(run_chunk, todo), 1):
+                skipped += sk
                 if i % 5 == 0:
                     print(f"[signa] {i}/{len(todo)} chunks done", file=sys.stderr)
     else:
         for i, it in enumerate(todo, 1):
-            run_chunk(it)
+            _, sk = run_chunk(it)
+            skipped += sk
             if i % 5 == 0:
                 print(f"[signa] {i}/{len(todo)} chunks done", file=sys.stderr)
+    if skipped:
+        print(f"[signa] skipped {skipped} peptides SIGNA could not process "
+              f"(empty/degenerate; 'No match found.')", file=sys.stderr)
 
     for f in os.listdir(workdir):          # prune stale chunks (changed sample)
         if f.startswith("chunk_") and f not in want:
