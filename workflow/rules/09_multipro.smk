@@ -34,12 +34,13 @@ rule multipro_surface:
 rule multipro_cocada:
     input:
         multipro = f"{OUT}/multipro.tsv",
-        marker   = f"{STATE}/multipro_cif/.written",
+        done     = f"{OUT}/interim/download_cifs.done",   # runs on the ORIGINAL CIFs
     output:
         summary = f"{OUT}/multipro_cocada_summary.tsv",
     threads: config["compute"]["threads"]
     params:
-        cif_dir    = f"{STATE}/multipro_cif",
+        cif_dir    = config["machine"]["cif_dir"],        # original RCSB CIFs (COCaDA can't
+                                                          # parse the MMCIFIO multipro CIF)
         cocada_dir = config["machine"]["cocada_dir"],
         ph         = config["cocada"]["ph"],
         out_root   = f"{STATE}/multipro_cocada",
