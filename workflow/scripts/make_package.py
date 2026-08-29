@@ -238,6 +238,16 @@ def main():
     n_expl = build_explore_tsv(snakemake.input.propedia,                 # noqa: F821
                                os.path.join(web, "data", explore_name))
 
+    # --- master bulk CSVs (Download page): the whole tables, unsplit ---
+    # propedia.csv -> data/propedia26_v17.csv ; multipro_final.csv -> data/multipro_v4.csv
+    peppro_csv_name = getattr(p, "peppro_csv_name", "propedia26_v17.csv")
+    multipro_csv_name = getattr(p, "multipro_csv_name", "multipro_v4.csv")
+    os.makedirs(os.path.join(web, "data"), exist_ok=True)
+    shutil.copy2(snakemake.input.propedia,                              # noqa: F821
+                 os.path.join(web, "data", peppro_csv_name))
+    shutil.copy2(snakemake.input.multipro,                             # noqa: F821
+                 os.path.join(web, "data", multipro_csv_name))
+
     # --- BLAST subject FASTAs (pep-pro): data/peptides.fasta, data/receptors.fasta ---
     n_pepf, n_recf = build_blast_fastas(snakemake.input.propedia,        # noqa: F821
                                         os.path.join(web, "data", "peptides.fasta"),
@@ -261,6 +271,7 @@ def main():
                  f"clusters={len(clusters)}\n")
     print(f"PACKAGED -> {base}\n  per-entry csv: {n_csv}\n  contacts: {n_con}\n"
           f"  multipro csv: {n_mp}\n  multipro contacts: {n_mpcon}\n"
+          f"  master csv: data/{peppro_csv_name}, data/{multipro_csv_name}\n"
           f"  explore tsv: {n_expl} rows -> data/{explore_name}\n"
           f"  blast fasta: peptides={n_pepf} receptors={n_recf} -> data/*.fasta\n"
           f"  clusters copied: {len(clusters)} {clusters}\n"
