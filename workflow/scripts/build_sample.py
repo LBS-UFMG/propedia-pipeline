@@ -26,8 +26,10 @@ def main():
     # restrict to downloaded structures, then take a seeded-random sample across
     # the whole downloaded set (unbiased w.r.t. deposition era / structure size)
     present = [pid for pid in oracle if os.path.exists(shard_path(p.cif_dir, pid))]
-    rng = random.Random(p.seed)
-    k = min(p.sample_size, len(present))
+    # cast: a --config override (e.g. sample='{size: 30}') arrives as a string, while the
+    # YAML file gives ints — int() makes seeding and min() work either way.
+    rng = random.Random(int(p.seed))
+    k = min(int(p.sample_size), len(present))
     sample = sorted(rng.sample(present, k))
     with open(snakemake.output.sample, "w") as fh:         # noqa: F821
         fh.write("\n".join(sample) + "\n")
