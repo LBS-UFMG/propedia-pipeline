@@ -128,6 +128,34 @@ def build_explore_tsv(csv_path, out_path):
     return n
 
 
+def build_blast_fastas(csv_path, pep_path, rec_path):
+    """Write the two BLAST subject FASTAs the site's Blast.php searches
+    (data/peptides.fasta, data/receptors.fasta) from propedia.csv. Header format
+    matches the shipped files: `>{id} | {DESC}` — BLAST takes {id} as sseqid (up to the
+    space) and the blast view links /entry/{id} via explode('|')[0]. One record per
+    pep-pro entry. Returns (n_peptides, n_receptors)."""
+    os.makedirs(os.path.dirname(pep_path), exist_ok=True)
+    os.makedirs(os.path.dirname(rec_path), exist_ok=True)
+    npep = nrec = 0
+
+    def hdr(desc, default):
+        d = (desc or "").replace("\r", " ").replace("\n", " ").strip() or default
+        return d
+
+    with open(csv_path) as fh, open(pep_path, "w") as pf, open(rec_path, "w") as rf:
+        for r in csv.DictReader(fh, delimiter=";"):
+            eid = r["id"]
+            pseq = (r.get("PEPTIDE_SEQ") or "").strip()
+            rseq = (r.get("PROTEIN_SEQ") or "").strip()
+            if pseq:
+                pf.write(f">{eid} | {hdr(r.get('PEPTIDE_DESC'), 'Peptide')}\n{pseq}\n")
+                npep += 1
+            if rseq:
+                rf.write(f">{eid} | {hdr(r.get('PROTEIN_DESC'), 'Protein')}\n{rseq}\n")
+                nrec += 1
+    return npep, nrec
+
+
 def package_contacts(cocada_dir, out_dir, ids):
     """Place each entry's COCaDA contacts at contacts/<id>/<PDB>_contacts.csv
     (renaming our <id>_contacts.csv -> <PDB>_contacts.csv, as the site expects)."""
@@ -210,6 +238,11 @@ def main():
     n_expl = build_explore_tsv(snakemake.input.propedia,                 # noqa: F821
                                os.path.join(web, "data", explore_name))
 
+    # --- BLAST subject FASTAs (pep-pro): data/peptides.fasta, data/receptors.fasta ---
+    n_pepf, n_recf = build_blast_fastas(snakemake.input.propedia,        # noqa: F821
+                                        os.path.join(web, "data", "peptides.fasta"),
+                                        os.path.join(web, "data", "receptors.fasta"))
+
     # --- clusters (shared across modes) ---
     clusters = copy_clusters(p.legacy_dir, os.path.join(web, "data", "clusters"))
 
@@ -224,10 +257,12 @@ def main():
     with open(snakemake.output.marker, "w") as fh:         # noqa: F821
         fh.write(f"peppro_csv={n_csv} contacts={n_con} multipro_csv={n_mp} "
                  f"multipro_contacts={n_mpcon} explore_tsv={n_expl} "
+                 f"peptides_fasta={n_pepf} receptors_fasta={n_recf} "
                  f"clusters={len(clusters)}\n")
     print(f"PACKAGED -> {base}\n  per-entry csv: {n_csv}\n  contacts: {n_con}\n"
           f"  multipro csv: {n_mp}\n  multipro contacts: {n_mpcon}\n"
           f"  explore tsv: {n_expl} rows -> data/{explore_name}\n"
+          f"  blast fasta: peptides={n_pepf} receptors={n_recf} -> data/*.fasta\n"
           f"  clusters copied: {len(clusters)} {clusters}\n"
           f"  column manifests: columns_peppro.txt ({len(header)} cols), "
           f"columns_multipro.txt ({len(mp_header)} cols)",
