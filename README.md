@@ -177,11 +177,21 @@ computing only the new PDB entries; the CSVs are rebuilt with old + new together
 
 **Cutting a release:** after a run finishes, snapshot the deliverables into a dated,
 immutable directory with a provenance manifest (snapshot date, git commit, tool config,
-entry counts):
+entry counts, **and the exact software environment that produced it**):
 ```bash
 snakemake --cores 8 --config mode=full release
 ```
-→ `releases/propedia-<snapshot_date>/{propedia.csv, multipro_final.csv, reproduction_report.txt, manifest.json}`
+→ `releases/propedia-<snapshot_date>/{propedia.csv, multipro_final.csv, reproduction_report.txt, manifest.json, requirements-lock.txt}`
+
+The release is **self-describing for deposition**: `requirements.txt` carries version
+*ranges* (the dev spec), but each release additionally pins the versions that *actually
+ran*. `manifest.json` gains an `environment` block — the Python version, the installed
+version of every key dependency, and the git commit / version of each external tool
+(COCaDA, SIGNA, iFeature, CCP4/PISA, prodigy-prot, read from the `machine:` paths) — and
+`requirements-lock.txt` is a full `pip freeze` of the build environment. To reproduce a
+release exactly, recreate it from that lock file (`pip install -r requirements-lock.txt`)
+and check out the tool commits the manifest records. Audit the current environment without
+cutting a release with `python workflow/scripts/env_capture.py`.
 
 **Packaging for the website:** build the propedia26 site file tree (per-entry CSVs in the
 site's v17 layout, per-entry contacts, the Explore summary TSV, BLAST subject FASTAs, the

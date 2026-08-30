@@ -1,3 +1,7 @@
+# Development spec: version RANGES. For deposition / exact reproduction, use the
+# per-release pin instead: `snakemake ... release` writes requirements-lock.txt (a full
+# pip freeze) + an `environment` block in manifest.json. Recreate from that lock file.
+#
 # biopython: MMCIFParser/MMCIFIO drive the mmCIF-based intermediate.
 biopython>=1.85
 # freesasa: uses structureFromBioPDB (Bio.PDB structure -> FreeSASA), so surface

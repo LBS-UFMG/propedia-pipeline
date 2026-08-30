@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 
+import env_capture
+
 
 def _rows(path, delim):
     with open(path) as fh:
@@ -40,6 +42,19 @@ def main():
         shutil.copy2(src, os.path.join(p.release_dir, key))
         copied[key] = os.path.getsize(src)
 
+    # Environment provenance: pin the EXACT versions that produced this release
+    # (requirements.txt carries ranges; this pins what actually ran). Ship a full
+    # pip freeze as requirements-lock.txt and summarize key deps + external tools
+    # (COCaDA/SIGNA/iFeature/CCP4/prodigy) in the manifest.
+    machine = snakemake.config.get("machine", {})              # noqa: F821
+    environment = env_capture.capture(machine)
+    lock = env_capture.pip_freeze()
+    if lock is not None:
+        lock_path = os.path.join(p.release_dir, "requirements-lock.txt")
+        with open(lock_path, "w") as fh:
+            fh.write(lock + "\n")
+        copied["requirements-lock.txt"] = os.path.getsize(lock_path)
+
     manifest = {
         "release": os.path.basename(p.release_dir),
         "snapshot_date": p.snapshot_date,
@@ -49,6 +64,7 @@ def main():
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
         "git_dirty": bool(_git("status", "--porcelain")),
         "state_dir": p.state_dir,           # the durable memory that produced this
+        "environment": environment,         # exact python/pkg/tool versions used
         "counts": {
             "propedia_entries": _rows(inp.propedia, ";"),
             "multipro_entries": _rows(inp.multipro, ";"),
