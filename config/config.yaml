@@ -30,8 +30,17 @@ cutoffs:
   peptide_len_min: 2            # peptides are 2-50 residues (the operational peptide
   peptide_len_max: 50           # definition used throughout Propedia); >50 -> treated as protein.
   protein_len_min: 51           # receptor chain must be > peptide_len_max to be the "protein".
-  max_residues_per_structure: 10000   # science/perf filter, NOT a format limit:
-                                      # the mmCIF intermediate has no atom/chain-ID ceiling
+  max_atoms_per_structure: 0    # PERF/size gate: skip input structures with more than this
+                                # many atoms (huge complexes, e.g. ribosomes, dominate runtime
+                                # and memory). 0 = no limit. This is a MEMBERSHIP filter, not a
+                                # compute param: over-limit PDBs never enter pairs.tsv (so they
+                                # are never parsed and never cascade downstream), but the filter
+                                # is NOT part of the checkpoint signature — already-computed
+                                # entries are preserved, and RAISING this limit later re-admits
+                                # the previously-skipped structures as new work without
+                                # recomputing or losing anything. Atom counts are cached in
+                                # state/<mode>/atom_counts.tsv. NOT a format limit: the mmCIF
+                                # intermediate itself has no atom/chain-ID ceiling.
 
 # ---- alt-threshold datasets (cutoff sensitivity analysis) ----
 # Set `variant` (below or via --config) to build an ALTERNATIVE dataset under

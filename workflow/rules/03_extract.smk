@@ -30,6 +30,9 @@ rule extract_pairs:
         pep_max     = config["cutoffs"]["peptide_len_max"],
         prot_min    = config["cutoffs"]["protein_len_min"],
         cutoff      = config["cutoffs"]["interaction_distance_A"],
+        max_atoms   = config["cutoffs"].get("max_atoms_per_structure", 0),
+        atom_cache  = f"{STATE}/atom_counts.tsv",
+        oversized   = f"{OUT}/oversized.tsv",
         ckpt        = f"{STATE}/checkpoint/extract",
     script:
         "../scripts/extract_pairs.py"

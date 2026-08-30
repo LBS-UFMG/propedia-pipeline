@@ -158,6 +158,22 @@ Two consequences:
     (or bump the stage script's `VERSION`, which auto-invalidates its checkpoints).
     Changing a stage's params also auto-invalidates.
 
+**Skipping huge structures (`cutoffs.max_atoms_per_structure`).** A few giant complexes
+(ribosomes, large viral capsids) dominate runtime and RAM. Set `max_atoms_per_structure`
+in the config to skip any input structure with more atoms than that (0 = no limit); those
+PDBs never enter `pairs.tsv`, so they are never parsed and never cascade into the
+downstream stages. This is a **membership filter, not a checkpoint parameter**, which makes
+it safe and incremental:
+- Applying or lowering the limit does **not** recompute or discard the entries you already
+  built — it just leaves the over-limit ones out of the dataset (their orphaned per-pair
+  CIFs are pruned; the skipped PDBs are listed in `results/<mode>/oversized.tsv`).
+- **Raising the limit later re-admits** the previously-skipped structures as *new* work on
+  the next run, while every entry already gathered stays cached — so you can do a fast
+  bounded full run now and a larger one later without losing or reprocessing anything.
+
+  Atom counts are cached in `state/<mode>/atom_counts.tsv`, so the decision is instant on
+  re-runs and only newly-seen PDBs are scanned.
+
 ### Durable state, updates, and releases
 
 Two output trees, and the distinction matters:

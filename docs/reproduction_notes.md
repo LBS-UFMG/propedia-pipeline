@@ -583,3 +583,29 @@ build — an alt-threshold *full* dataset is therefore as expensive as a fresh f
 a quick sensitivity check, run a variant in `sample` mode. Comparing entry counts and mean
 BSA / ΔG across `dist5` / default / `dist8` (and `bsa10`) quantifies how robust the dataset
 is to the threshold choice — the analysis reviewers asked for.
+
+## Structure size gate — skipping huge complexes (perf)
+
+`cutoffs.max_atoms_per_structure` (default 0 = off) skips input structures larger than the
+limit so a handful of giant complexes (ribosomes, capsids) don't dominate a full run's
+runtime and memory. `extract_pairs` counts `_atom_site` ATOM/HETATM rows by a cheap text
+scan of the gzipped CIF — no Biopython parse, which is the expensive step avoided for the
+huge ones — and drops over-limit PDBs from `pairs.tsv`, so they never cascade into any
+downstream stage. Skipped PDBs are listed in `results/<mode>/oversized.tsv`.
+
+**Why it is safe and incremental.** The gate is a *membership filter*, deliberately kept
+OUT of the extract checkpoint signature (an entry's extraction output does not depend on the
+limit). So:
+- Entries already computed are preserved and reused; applying/lowering the limit only
+  removes over-limit PDBs from the dataset (orphaned per-pair CIFs are pruned).
+- Raising the limit on a later run re-admits the previously-skipped structures as *new*
+  work, while everything already gathered stays cached — a bounded run now and a larger run
+  later lose nothing and reprocess nothing.
+
+Atom counts are cached in `state/<mode>/atom_counts.tsv` (limit-independent durable state);
+only newly-seen PDBs are scanned on re-runs.
+
+**Caveat (NMR):** the count sums all `_atom_site` rows, i.e. every model of a multi-model
+NMR ensemble, so an NMR structure's atom count is (models × atoms) — an over-estimate.
+NMR structures are small, so a sensibly large limit is unaffected; set the limit well above
+typical complex sizes (the target is only the outlier giants).

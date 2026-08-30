@@ -88,6 +88,13 @@ paths, CIF dir, oracle CSVs). Everything else is pipeline science — don't chan
   ~100%. Expect ~69% sequence match in the report — that's this, not a bug.
 - **`--config` values arrive as strings** when overriding nested keys; cast (e.g. `int(...)`) —
   see `build_sample.py`.
+- **Structure size gate (`cutoffs.max_atoms_per_structure`)** is a MEMBERSHIP filter, not a
+  compute/checkpoint param. `extract_pairs` cheaply counts `_atom_site` ATOM/HETATM rows
+  (no Biopython parse), caches them in `state/<mode>/atom_counts.tsv`, and drops over-limit
+  PDBs from `pairs.tsv` (so they never parse or cascade). It is deliberately NOT in the
+  extract checkpoint signature: already-computed entries survive a limit change, and RAISING
+  the limit re-admits previously-skipped structures as new work without recompute. Do NOT
+  add it to the `checkpoint.namespace` params, and do NOT bump extract `VERSION` for it.
 - **Legacy clusters are inherited, not recomputed** (Hammock/MUSTANG/ProBiS). New entries get blank
   `sequence-/interface-/binding-cluster` + `is_leader`/`leader_id` until those tools are re-run.
   The `seq100`/CNR cluster IS recomputed.

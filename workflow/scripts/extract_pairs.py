@@ -58,6 +58,45 @@ def shard_path(cif_dir, pid):
     return os.path.join(cif_dir, sub, f"{pid}.cif.gz")
 
 
+def count_atoms(cif_dir, pid):
+    """Cheap atom count: scan the gzipped CIF text for _atom_site ATOM/HETATM rows,
+    WITHOUT a Biopython parse (which is the expensive step we want to avoid for huge
+    structures). Returns an int, or None if the file is missing/unreadable."""
+    path = shard_path(cif_dir, pid)
+    try:
+        n = 0
+        with gzip.open(path, "rt") as fh:
+            for line in fh:
+                if line.startswith("ATOM ") or line.startswith("HETATM"):
+                    n += 1
+        return n
+    except Exception:                                          # noqa: BLE001
+        return None
+
+
+def load_atom_cache(path):
+    """pid -> atom count, from the durable cache (empty dict if absent)."""
+    cache = {}
+    if path and os.path.exists(path):
+        with open(path) as fh:
+            next(fh, None)                                      # header
+            for line in fh:
+                pid, _, n = line.rstrip("\n").partition("\t")
+                if pid and n.isdigit():
+                    cache[pid] = int(n)
+    return cache
+
+
+def save_atom_cache(path, cache):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as fh:
+        fh.write("pid\tn_atoms\n")
+        for pid in sorted(cache):
+            fh.write(f"{pid}\t{cache[pid]}\n")
+    os.replace(tmp, path)
+
+
 def load_first_model(pid, cif_dir, parser):
     path = shard_path(cif_dir, pid)
     with gzip.open(path, "rt") as fh:
@@ -130,8 +169,44 @@ def main():
     os.makedirs(p.cif_out_dir, exist_ok=True)              # resume: do NOT clear
     sample = [l.strip() for l in open(snakemake.input.ids) if l.strip()]  # noqa: F821
 
+    # ---- size gate (membership filter, NOT a compute/checkpoint param) ----
+    # Skip structures with more than `max_atoms` atoms so huge complexes (ribosomes,
+    # etc.) never enter pairs.tsv and never cascade downstream. Atom counts are cached
+    # durably so the decision is instant on re-runs and only NEW pids are scanned;
+    # raising the limit later simply re-admits previously-skipped pids as new work.
+    max_atoms = int(getattr(p, "max_atoms", 0) or 0)
+    atom_cache_path = getattr(p, "atom_cache", None)
+    cache = load_atom_cache(atom_cache_path) if atom_cache_path else {}
+    scanned = 0
+    if max_atoms > 0:
+        for pid in sample:
+            if pid not in cache:
+                n = count_atoms(p.cif_dir, pid)
+                if n is not None:
+                    cache[pid] = n
+                    scanned += 1
+        if atom_cache_path and scanned:
+            save_atom_cache(atom_cache_path, cache)
+    included, oversized = [], []
+    for pid in sample:
+        n = cache.get(pid)
+        if max_atoms > 0 and n is not None and n > max_atoms:
+            oversized.append((pid, n))
+        else:
+            included.append(pid)
+    if max_atoms > 0:
+        print(f"size gate: max_atoms={max_atoms}; {len(included)} kept, "
+              f"{len(oversized)} skipped ({scanned} newly scanned)", file=sys.stderr)
+        over_path = getattr(p, "oversized", None)
+        if over_path:
+            os.makedirs(os.path.dirname(over_path) or ".", exist_ok=True)
+            with open(over_path, "w") as fh:
+                fh.write("pdb\tn_atoms\n")
+                for pid, n in sorted(oversized):
+                    fh.write(f"{pid}\t{n}\n")
+
     items = [(pid, p.cif_dir, p.cif_out_dir, p.pep_min, p.pep_max, p.prot_min,
-              p.cutoff) for pid in sample]
+              p.cutoff) for pid in included]
     workdir = checkpoint.namespace(p.ckpt, VERSION,
                                    {"pep_min": p.pep_min, "pep_max": p.pep_max,
                                     "prot_min": p.prot_min, "cutoff": p.cutoff})
@@ -141,7 +216,7 @@ def main():
     cols = ["id", "pdb", "pep_chain", "prot_chain",
             "pep_size", "prot_size", "pep_seq", "prot_seq"]
     all_rows, keep_ids = [], set()
-    for pid in sample:
+    for pid in included:
         res = results.get(pid)
         if not res or not res["record"]:
             continue
