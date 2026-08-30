@@ -254,9 +254,12 @@ column, the extra physicochemical columns (atomic formula, atom count, extinctio
 coefficient), the PDB metadata columns (resolution, method, deposition date, title,
 organism), ML feature scaling, the **PISA biological-vs-crystal interface annotation**
 (`pisa_interface_class` from PISA's CSS; per-entry + Multipro; answers the crystal-packing
-concern), and the **website packaging** step (`snakemake package`): per-entry CSVs in the
+concern), the **website packaging** step (`snakemake package`): per-entry CSVs in the
 site's v17 layout, the Explore summary TSV, BLAST subject FASTAs, the master bulk CSVs, and
-the cluster tables — all written to a local `web_dir` tree.
+the cluster tables — all written to a local `web_dir` tree — and **deposition-grade
+release provenance** (`snakemake release`): each release ships a `requirements-lock.txt`
+and an `environment` block in `manifest.json` pinning the exact Python, dependency, and
+external-tool versions that produced it (see §4, "Cutting a release").
 
 **Remaining:**
 1. **PISA validation numbers** — the report block and `tests/smoke_test_pisa.py` are ready;
