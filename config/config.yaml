@@ -18,14 +18,34 @@ sample:
 pdb_snapshot_date: "2026-08-27"
 
 # ---- selection / cutoffs ----
+# Defaults reproduce Propedia's published selection; each is justified in
+# docs/reproduction_notes.md ("Selection cutoffs"). To test alternatives without
+# clobbering the canonical build, use a `variant` (see cutoff_variants below).
 cutoffs:
-  interaction_distance_A: 6.0
-  bsa_threshold_A2: 0.0
-  peptide_len_min: 2
-  peptide_len_max: 50
-  protein_len_min: 51
+  interaction_distance_A: 6.0   # peptide-protein contact distance defining an interface.
+                                # 6 A is Propedia's convention and PRODIGY's default contact
+                                # radius; captures side-chain contacts beyond direct H-bonds.
+  bsa_threshold_A2: 0.0         # keep a pair only if it buries surface area (BSA > 0), i.e.
+                                # a real interface exists. 0.0 = "any nonzero burial".
+  peptide_len_min: 2            # peptides are 2-50 residues (the operational peptide
+  peptide_len_max: 50           # definition used throughout Propedia); >50 -> treated as protein.
+  protein_len_min: 51           # receptor chain must be > peptide_len_max to be the "protein".
   max_residues_per_structure: 10000   # science/perf filter, NOT a format limit:
                                       # the mmCIF intermediate has no atom/chain-ID ceiling
+
+# ---- alt-threshold datasets (cutoff sensitivity analysis) ----
+# Set `variant` (below or via --config) to build an ALTERNATIVE dataset under
+# results/<mode>__<variant>/ + state/<mode>__<variant>/ WITHOUT overwriting the default
+# build. If the variant names a key here, its cutoff overrides are applied automatically
+# (interaction_distance_A also retunes prodigy.distance_cutoff). Example:
+#   snakemake --cores 8 --config mode=full variant=dist8
+# Add your own profiles freely; the label becomes the output-tree suffix.
+variant: ""                     # "" = canonical build (results/<mode>/)
+cutoff_variants:
+  dist5:      {interaction_distance_A: 5.0}   # stricter contact distance
+  dist8:      {interaction_distance_A: 8.0}   # looser contact distance
+  bsa10:      {bsa_threshold_A2: 10.0}        # require a more substantial buried interface
+  pep2_30:    {peptide_len_max: 30, protein_len_min: 31}   # tighter peptide-length window
 
 collection:
   strategy: "prefilter-permissive"

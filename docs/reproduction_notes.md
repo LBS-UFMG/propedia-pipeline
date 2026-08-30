@@ -544,3 +544,42 @@ number: every row in `propedia.csv` already passed BSA>0, so the count PISA stil
 report also prints the class/status breakdown and mean BSA and predicted dG for biological
 vs crystal-packing (expected: biological interfaces have larger BSA and more favourable dG).
 Populate the concrete counts here from a production CCP4 run.
+
+## Selection cutoffs — justification & sensitivity (reviewer alternatives)
+
+Propedia's dataset membership is set by four cutoffs (`config/config.yaml` `cutoffs:`).
+The defaults reproduce the published selection; the rationale for each, and how to build
+alternative-threshold datasets to test sensitivity, are recorded here.
+
+**Defaults and rationale:**
+
+| Cutoff | Default | Where applied | Rationale |
+|---|---|---|---|
+| `interaction_distance_A` | 6.0 Å | `extract_pairs` (defines a contacting pair + interface residues), `prodigy` (contact radius) | 6 Å is Propedia's convention and PRODIGY's default heavy-atom contact radius. It captures side-chain–mediated contacts (van der Waals, salt bridges, water-bridged), not only direct H-bonds (~3.5 Å), which under-count peptide interfaces. |
+| `bsa_threshold_A2` | 0.0 (BSA > 0) | `assemble` (keep only pairs that bury surface) | Requiring nonzero buried surface area removes chain pairs that are close in space but do not form a real interface (e.g. crossing-over backbones with no desolvated contact). 0.0 = "any burial"; raise it to demand a more substantial interface. |
+| `peptide_len_min` / `peptide_len_max` | 2 / 50 | `extract_pairs` | The operational definition of a *peptide* used throughout Propedia: 2–50 residues. A single residue is not a peptide; >50 residues is treated as a (small) protein. This bound is what separates the peptide chain from the receptor. |
+| `protein_len_min` | 51 | RCSB query + `extract_pairs` | The receptor must be longer than `peptide_len_max`, so the two chains are unambiguously peptide vs. protein. Also pre-filters the RCSB search to structures with a protein-sized polymer. |
+
+**Building an alternative-threshold dataset (sensitivity analysis).** Set a `variant`; the
+build goes to `results/<mode>__<variant>/` + `state/<mode>__<variant>/`, leaving the
+canonical dataset untouched. Named profiles in `cutoff_variants` apply as one knob:
+
+```bash
+snakemake --cores 8 --config mode=full variant=dist8    # 8 Å contact distance
+snakemake --cores 8 --config mode=full variant=dist5    # 5 Å (stricter)
+snakemake --cores 8 --config mode=full variant=bsa10    # require BSA > 10 Å²
+```
+
+To try a threshold not listed, add a profile to `cutoff_variants` in `config.yaml` (it is
+deep-merged onto the defaults, so unspecified cutoffs are preserved) and run with that
+label — e.g. `dist7: {interaction_distance_A: 7.0}` then `--config variant=dist7`. Prefer
+this over `--config cutoffs='{...}'`, which *replaces* the whole `cutoffs` mapping rather
+than merging and would drop the other cutoff keys.
+
+Because the per-entry checkpoints are namespaced by a hash of each stage's params, changing
+a cutoff forces a clean recompute of the affected stages (no stale reuse). A `variant` run
+also gets its own durable state, so it re-extracts structures independently of the canonical
+build — an alt-threshold *full* dataset is therefore as expensive as a fresh full build; for
+a quick sensitivity check, run a variant in `sample` mode. Comparing entry counts and mean
+BSA / ΔG across `dist5` / default / `dist8` (and `bsa10`) quantifies how robust the dataset
+is to the threshold choice — the analysis reviewers asked for.

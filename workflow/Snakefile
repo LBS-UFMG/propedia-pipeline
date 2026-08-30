@@ -1,8 +1,25 @@
 configfile: "config/config.yaml"
 
 MODE  = config["mode"]
-OUT   = f"{config['paths']['results_dir']}/{MODE}"    # DERIVED outputs (disposable)
-STATE = f"{config['paths']['state_dir']}/{MODE}"      # DURABLE state: checkpoints + structures
+
+# ---- alt-threshold datasets (cutoff sensitivity / reviewer alternatives) ----
+# A non-empty `variant` builds an ALTERNATIVE dataset alongside the canonical one:
+# outputs and durable state get a `__<variant>` suffix so the default build is never
+# overwritten. If `variant` names an entry in `cutoff_variants`, those cutoff overrides
+# are applied automatically — one knob:  `snakemake --cores N --config mode=full variant=dist8`
+# (define new thresholds as a `cutoff_variants` profile; see docs/reproduction_notes.md).
+VARIANT = str(config.get("variant", "") or "").strip()
+if VARIANT:
+    overrides = (config.get("cutoff_variants") or {}).get(VARIANT)
+    if overrides:
+        config["cutoffs"] = {**config["cutoffs"], **overrides}
+        # keep PRODIGY's contact distance aligned with the selection distance
+        if "interaction_distance_A" in overrides:
+            config["prodigy"]["distance_cutoff"] = overrides["interaction_distance_A"]
+_SUFFIX = f"__{VARIANT}" if VARIANT else ""
+
+OUT   = f"{config['paths']['results_dir']}/{MODE}{_SUFFIX}"   # DERIVED outputs (disposable)
+STATE = f"{config['paths']['state_dir']}/{MODE}{_SUFFIX}"     # DURABLE state: checkpoints + structures
 
 include: "rules/01_collect.smk"
 include: "rules/02_download.smk"

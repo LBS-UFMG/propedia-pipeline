@@ -118,6 +118,16 @@ results/<mode>/reproduction_report.txt
 ```
 which diffs each stage against the reference DB and prints the reproduction scorecard.
 
+**Alt-threshold datasets (cutoff sensitivity).** To test alternative selection cutoffs
+without overwriting the canonical build, set a `variant`: outputs go to
+`results/<mode>__<variant>/` (durable state to `state/<mode>__<variant>/`). Named profiles
+in `config.yaml` (`cutoff_variants:`) apply as one knob:
+```bash
+snakemake --cores 16 --config mode=full variant=dist8   # 8 Å contact distance, separate tree
+```
+See `docs/reproduction_notes.md` ("Selection cutoffs") for the default-cutoff justification
+and the sensitivity-analysis recipe.
+
 ### Long runs: parallelism & resuming (read before a full run)
 
 The heavy per-entry stages (extract, prodigy, cocada, freesasa, interface, metadata,
