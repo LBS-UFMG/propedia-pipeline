@@ -22,3 +22,28 @@ rule package:
         column_order_multipro = config.get("package", {}).get("column_order_multipro", ""),
     script:
         "../scripts/make_package.py"
+
+
+# Build the website's bulk-download ZIP bundles from the FINISHED outputs.
+# Explicit target (not part of `rule all`): `snakemake zips`.
+# READ-ONLY over state/ + results/ — creates zips only, never recomputes anything.
+rule zips:
+    input:
+        propedia   = f"{OUT}/propedia.csv",
+        multipro   = f"{OUT}/multipro_final.csv",
+        seq_sig    = f"{OUT}/seq_signatures.tsv",
+        struct_sig = f"{OUT}/struct_signatures.csv",
+        pep_marker = f"{STATE}/pep_pdb/.written",
+        mp_marker  = f"{STATE}/multipro_cif/.written",
+    output:
+        marker = f"{WEB}/data/.zipped",
+    params:
+        out_dir          = f"{WEB}/data",
+        cif_dir          = f"{STATE}/cif",
+        pep_pdb_dir      = f"{STATE}/pep_pdb",
+        multipro_cif_dir = f"{STATE}/multipro_cif",
+        legacy_dir       = config["clusters"]["legacy_dir"],
+        names            = config.get("package", {}).get("zip_names", {}),
+        compresslevel    = config.get("package", {}).get("zip_compresslevel", 6),
+    script:
+        "../scripts/make_zips.py"
