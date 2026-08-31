@@ -19,7 +19,8 @@ from Bio.PDB import MMCIFParser, MMCIFIO, NeighborSearch, Select
 
 import checkpoint
 
-VERSION = "2"            # bump on logic change -> invalidates old checkpoints
+VERSION = "3"            # bump on logic change -> invalidates old checkpoints
+                         # (v3: v15-style X padding — polymer_set residue membership)
 from Bio.PDB.Polypeptide import is_aa
 from Bio.Data.IUPACData import protein_letters_3to1_extended
 
@@ -29,9 +30,40 @@ def one(resname):
     return code if len(code) == 1 else "X"
 
 
-def modeled_aa(chain):
-    # Count any amino-acid residue that is part of the polymer (het flag 'H_' or ' '),
-    # standard or modified, matching v15's convention of keeping modified residues as X.
+def polymer_set(cif_text):
+    """(auth_asym_id, auth_seq_id) of every POLYMER residue = `_atom_site` rows whose
+    `label_seq_id` is numeric. These are the peptide/protein residues INCLUDING terminal
+    caps (ACE/NH2) and modified residues; waters/ligands/ions carry '.'/'?' and are
+    excluded. This is what restores v15's convention: keep every polymer residue in the
+    sequence, writing non-standard ones as `X` (see `one`). Returns an EMPTY set if the
+    cif has no `label_seq_id` column, which makes `modeled_aa` fall back to the
+    amino-acid test (older/degenerate files never regress)."""
+    poly, cols, started = set(), {}, False
+    for line in cif_text.splitlines():
+        s = line.strip()
+        if s.startswith("_atom_site."):
+            cols[s.split(".", 1)[1]] = len(cols)
+        elif cols and (s.startswith("ATOM ") or s.startswith("HETATM")):
+            started = True
+            f = s.split()
+            try:
+                if f[cols["label_seq_id"]] not in (".", "?"):
+                    poly.add((f[cols["auth_asym_id"]], f[cols["auth_seq_id"]]))
+            except (KeyError, IndexError):
+                return set()                     # unexpected layout -> fall back
+        elif started:
+            break                                # past the _atom_site loop
+    return poly
+
+
+def modeled_aa(chain, poly=None):
+    """Residues that make up the peptide/protein sequence. v15 convention: every
+    POLYMER residue (standard, modified, or capped) counts — non-standard ones become
+    `X` in `seq_of`. `poly` is the polymer-residue set from `polymer_set`; when it is
+    empty/None (no label_seq_id in the cif) we fall back to the amino-acid test."""
+    if poly:
+        cid = chain.id
+        return [r for r in chain if (cid, str(r.id[1])) in poly]
     return [r for r in chain if is_aa(r, standard=False)]
 
 
@@ -101,6 +133,7 @@ def load_first_model(pid, cif_dir, parser):
     path = shard_path(cif_dir, pid)
     with gzip.open(path, "rt") as fh:
         data = fh.read()
+    poly = polymer_set(data)                # v15-style residue membership (label_seq_id)
     tmp = tempfile.NamedTemporaryFile("w", suffix=".cif", delete=False)
     try:
         tmp.write(data)
@@ -108,16 +141,16 @@ def load_first_model(pid, cif_dir, parser):
         structure = parser.get_structure(pid, tmp.name)
     finally:
         os.unlink(tmp.name)
-    return next(iter(structure))            # first model (first NMR conformer)
+    return next(iter(structure)), poly      # first model (first NMR conformer)
 
 
 def process(pid, p, io, parser):
     rows = []
     try:
-        model = load_first_model(pid, p.cif_dir, parser)
+        model, poly = load_first_model(pid, p.cif_dir, parser)
     except Exception as exc:                # noqa: BLE001
         return rows, f"parse_error"
-    chain_res = {c.id: modeled_aa(c) for c in model}
+    chain_res = {c.id: modeled_aa(c, poly) for c in model}
     chain_res = {c: r for c, r in chain_res.items() if r}
     peptides = {c: r for c, r in chain_res.items()
                 if p.pep_min <= len(r) <= p.pep_max}

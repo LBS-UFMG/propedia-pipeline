@@ -36,7 +36,7 @@ def main():
         chains = {r["PEPTIDE_CHAIN"]} | set(r["PROTEIN_CHAIN"].split(":"))
         if pid not in cache:
             try:
-                cache[pid] = ep.load_first_model(pid, p.cif_dir, parser)
+                cache[pid] = ep.load_first_model(pid, p.cif_dir, parser)[0]  # model only
             except Exception:                              # noqa: BLE001
                 cache[pid] = None
         model = cache[pid]
