@@ -121,6 +121,9 @@ package:
   peppro_csv_name: "propedia26_v17.csv"
   multipro_csv_name: "multipro_v5.csv"
   explore_tsv_name: "propedia26_v17.tsv"
+  # The website serves per-entry data from a fixed subdir ($modo = 'db'). Writing the
+  # packaged tree straight into data/db/ makes deployment a pure rsync (no rename step).
+  web_mode_name: "db"
   # Bulk-download ZIP names (`snakemake zips`). The Download page serves the peptide
   # and multipro structure zips from data/db/; propedia27-beta labels the multipro
   # PDB zip v7. The pep-pro complexes zip (peppro) is offloaded to Zenodo, not the

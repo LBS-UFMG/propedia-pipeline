@@ -38,3 +38,16 @@ rule all:
         f"{OUT}/propedia.csv",
         f"{OUT}/multipro_final.csv",
         f"{OUT}/reproduction_report.txt"
+
+
+# One-command production build: the validated dataset PLUS everything the website needs
+# — the packaged per-entry web tree (data/db/…, incl. the multipro-contacts branch that
+# `package` pulls in) and the bulk-download zips. The result under <web_dir> is ready to
+# rsync to the server, so deployment is a pure transfer.
+#   snakemake --cores N site --config mode=full
+# Kept OUT of `rule all` on purpose: quick/sample runs shouldn't build the multi-GB zips.
+rule site:
+    input:
+        f"{OUT}/reproduction_report.txt",
+        f"{WEB}/.packaged",
+        f"{WEB}/data/.zipped",

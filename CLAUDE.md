@@ -21,6 +21,10 @@ snakemake -n --cores 1                 # DRY RUN — always do this after editin
 snakemake --cores <N>                  # sample mode (default) — builds + self-validates
 snakemake --cores <N> --config mode=full --rerun-incomplete --keep-going   # production
 snakemake --cores <N> package          # build the website file tree (LOCAL only, no deploy)
+snakemake --cores <N> --config mode=full site    # ONE-COMMAND production build: dataset +
+                                       #   packaged web tree (data/db/…) + bulk zips, ready to rsync
+scripts/deploy_site.sh user@host:/…/public/data  # PURE TRANSFER of the `site` tree (dest never
+                                       #   hardcoded; also honors $PROPEDIA_DEPLOY_DEST; -n = dry run)
 snakemake --cores 8 --config mode=full release   # dated immutable release snapshot
 snakemake --unlock                     # after any hard-killed run, before resuming
 python -m py_compile workflow/scripts/<x>.py      # there is no unit-test suite; this + the
@@ -33,7 +37,12 @@ python tests/smoke_test_pisa.py --ccp4-dir <ccp4> # PISA smoke test are the chec
   if `pairs.tsv` is already cached from a bigger sample, Snakemake reuses it and the override does
   **not** shrink the data. For a genuinely small run: `rm -rf results/sample state/sample` first.
 - The final target is `results/<mode>/reproduction_report.txt` — it diffs each stage against the
-  reference (v15) oracle. `package` and `release` are separate explicit targets.
+  reference (v15) oracle. `package`, `site`, and `release` are separate explicit targets (`site`
+  = report + `package` + `zips`; kept out of `rule all` so sample runs don't build the multi-GB zips).
+- **Deploy = pure transfer.** `package.web_mode_name: "db"` writes the tree straight into `data/db/`
+  (the site's `$modo`), so `snakemake site` then `scripts/deploy_site.sh <dest>` needs no rename step.
+  The packager also emits `data/pdb/total_contacts2.txt` (home-page counters, incl. the seq-dedup
+  unique count) so the site's stats stay in sync every build.
 
 ## Architecture
 

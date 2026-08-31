@@ -15,6 +15,7 @@ reorder_columns.py once the target order is known (a live v17 file or a defined
 site schema) — so this step does not depend on that decision.
 """
 import csv
+import datetime
 import os
 import shutil
 import sys
@@ -225,6 +226,33 @@ def layout_structures(cif_dir, out_dir, ids, ext_out=".cif"):
     return n, missing
 
 
+def build_home_stats(propedia_csv, multipro_csv, out_path, update_date=""):
+    """Write the site's home-page counters file (data/pdb/total_contacts2.txt).
+
+    Home::index (propedia27-beta) reads 5 lines, in this exact order:
+      1 pep-pro complexes   2 unique entries   3 total entries   4 multipro   5 date
+    'unique' is the seq-dedup count (distinct PROTEIN_SEQ+PEPTIDE_SEQ), the site's
+    documented redundancy methodology; 'total' = pep-pro + multipro. Without this file
+    the site shows hardcoded defaults, so emitting it keeps the home stats in sync with
+    every build. `update_date` defaults to today ("Mon D, YYYY", e.g. Aug 31, 2026)."""
+    peppro, seen = 0, set()
+    with open(propedia_csv) as fh:
+        for r in csv.DictReader(fh, delimiter=";"):
+            peppro += 1
+            seen.add((r.get("PROTEIN_SEQ", ""), r.get("PEPTIDE_SEQ", "")))
+    unique = len(seen)
+    multipro = max(0, sum(1 for _ in open(multipro_csv)) - 1)   # minus header
+    total = peppro + multipro
+    if not update_date:
+        d = datetime.date.today()
+        update_date = f"{d.strftime('%b')} {d.day}, {d.year}"
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, "w") as fh:
+        fh.write(f"{peppro}\n{unique}\n{total}\n{multipro}\n{update_date}\n")
+    return {"peppro": peppro, "unique": unique, "total": total,
+            "multipro": multipro, "date": update_date}
+
+
 def copy_clusters(legacy_dir, out_dir):
     """Copy the cluster tables the site's Clusters page reads. What we have comes
     from the inherited legacy clusters; therapeutic-class lists (AAP..SBP) and
@@ -244,7 +272,10 @@ def main():
     p = snakemake.params                                   # noqa: F821
     web = os.path.expanduser(p.web_dir)
     mode = p.mode
-    base = os.path.join(web, "data", mode)
+    # The site serves everything under a fixed subdir ($modo = 'db'); default the web
+    # subdir to that so the tree is deploy-ready (a plain rsync, no <mode>->db rename).
+    web_mode_name = getattr(p, "web_mode_name", None) or mode
+    base = os.path.join(web, "data", web_mode_name)
 
     # optional target column orders (for the final permutation to the site layout)
     target = _load_order(getattr(p, "column_order", None))
@@ -303,6 +334,11 @@ def main():
                                         os.path.join(web, "data", "peptides.fasta"),
                                         os.path.join(web, "data", "receptors.fasta"))
 
+    # --- home-page counters: data/pdb/total_contacts2.txt (Home::index reads it) ---
+    stats = build_home_stats(snakemake.input.propedia, snakemake.input.multipro,  # noqa: F821
+                             os.path.join(web, "data", "pdb", "total_contacts2.txt"),
+                             getattr(p, "update_date", ""))
+
     # --- clusters (shared across modes) ---
     clusters = copy_clusters(p.legacy_dir, os.path.join(web, "data", "clusters"))
 
@@ -319,6 +355,8 @@ def main():
                  f"multipro_contacts={n_mpcon} explore_tsv={n_expl} "
                  f"peptides_fasta={n_pepf} receptors_fasta={n_recf} "
                  f"pdb={n_pdb} multipro_pdb={n_mppdb} "
+                 f"home_stats=total:{stats['total']},peppro:{stats['peppro']},"
+                 f"unique:{stats['unique']},multipro:{stats['multipro']} "
                  f"clusters={len(clusters)}\n")
         if miss_pdb:
             fh.write(f"WARNING: {len(miss_pdb)} pep-pro entries have NO complex "

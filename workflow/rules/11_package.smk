@@ -20,6 +20,11 @@ rule package:
         cif_dir               = f"{STATE}/cif",
         multipro_cif_dir      = f"{STATE}/multipro_cif",
         structure_subdir      = config.get("package", {}).get("structure_subdir", "pdb"),
+        # web subdir the site serves from ($modo='db'); blank -> the run mode. Set 'db'
+        # so the packaged tree deploys as a pure rsync (no <mode>->db rename).
+        web_mode_name         = config.get("package", {}).get("web_mode_name", ""),
+        # home-page "last updated" string; blank -> the packager stamps today's date
+        update_date           = config.get("package", {}).get("update_date", ""),
         legacy_dir            = config["clusters"]["legacy_dir"],
         # optional: a file of target column names -> permutes to the site's order
         column_order          = config.get("package", {}).get("column_order", ""),
