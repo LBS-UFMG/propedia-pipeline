@@ -42,7 +42,11 @@ PISA_COLS = ["pisa_status", "pisa_interface_class",
              "pisa_assembly_done", "pisa_n_interfaces",
              "pisa_interface_id", "pisa_chain_1", "pisa_chain_2", "pisa_css",
              "pisa_area", "pisa_solv_en", "pisa_pvalue", "pisa_tipo",
-             "pisa_n_hbonds", "pisa_n_saltbridges"]
+             "pisa_n_hbonds", "pisa_n_saltbridges",
+             "pisa_nres_1", "pisa_natoms_1", "pisa_area_1", "pisa_solv_en_1",
+             "pisa_nres_2", "pisa_natoms_2", "pisa_area_2", "pisa_solv_en_2",
+             "pisa_diss_energy", "pisa_entropy", "pisa_int_energy",
+             "pisa_asa", "pisa_bsa", "pisa_diss_area"]
 ADDITIVE = ["PEPTIDE_ORGANISM", "PROTEIN_ORGANISM", "FIRST_RELEASE"] + PISA_COLS
 
 # physchem long-field -> v15 suffix

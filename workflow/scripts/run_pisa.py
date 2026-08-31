@@ -29,14 +29,21 @@ import xml.etree.ElementTree as ET
 
 import checkpoint
 
-VERSION = "1"            # NOT bumped: ok/error results unchanged by the timeout fix,
-                         # so existing checkpoints stay valid (only timeouts re-attempt)
+VERSION = "2"            # bumped: extraction now also captures per-molecule interface
+                         # stats + assembly energetics -> checkpoints must recompute
 XRAY = "X-RAY DIFFRACTION"
 _CTR = itertools.count()
 
-# fields captured per interface (mirrors the lab pisa_css.py extraction)
+# fields captured per interface. The _1/_2 pairs are the two interacting molecules'
+# per-molecule interface stats, in the same order as chain_1/chain_2.
 IFACE_FIELDS = ["interface_id", "tipo", "chain_1", "chain_2", "css", "area",
-                "solv_en", "pvalue", "n_hbonds", "n_saltbridges"]
+                "solv_en", "pvalue", "n_hbonds", "n_saltbridges",
+                "nres_1", "natoms_1", "area_1", "solv_en_1",
+                "nres_2", "natoms_2", "area_2", "solv_en_2"]
+# assembly-level energetics, taken from the assembly whose composition == the pep-pro
+# chain set (see find_assembly). PISA_bsa here is the assembly's buried area; note the
+# per-molecule area_1+area_2 also sums to it for a 2-body assembly.
+ASM_FIELDS = ["diss_energy", "entropy", "int_energy", "asa", "bsa", "diss_area"]
 # pair-level output columns.  pisa_interface_class is the DERIVED biological-vs-crystal
 # annotation (the reviewer-requested read-out): biological / crystal-packing when PISA
 # gave a CSS for the pep-pro interface, indeterminate when it ran but could not score
@@ -46,7 +53,11 @@ OUT_COLS = ["id", "pisa_status", "pisa_interface_class",
             "pisa_assembly_done", "pisa_n_interfaces",
             "pisa_interface_id", "pisa_chain_1", "pisa_chain_2", "pisa_css",
             "pisa_area", "pisa_solv_en", "pisa_pvalue", "pisa_tipo",
-            "pisa_n_hbonds", "pisa_n_saltbridges"]
+            "pisa_n_hbonds", "pisa_n_saltbridges",
+            "pisa_nres_1", "pisa_natoms_1", "pisa_area_1", "pisa_solv_en_1",
+            "pisa_nres_2", "pisa_natoms_2", "pisa_area_2", "pisa_solv_en_2",
+            "pisa_diss_energy", "pisa_entropy", "pisa_int_energy",
+            "pisa_asa", "pisa_bsa", "pisa_diss_area"]
 
 
 def shard_path(cif_dir, pid):
@@ -134,6 +145,7 @@ def run_one(args):
         for i in interfaces:
             mols = i.findall("molecule")
             ch = [_texto(m, "chain_id") for m in mols[:2]]
+            m1, m2 = (mols[0] if mols else None), (mols[1] if len(mols) > 1 else None)
             rows.append({
                 "interface_id": _texto(i, "id"), "tipo": _texto(i, "type"),
                 "chain_1": ch[0] if ch else "", "chain_2": ch[1] if len(ch) > 1 else "",
@@ -141,9 +153,33 @@ def run_one(args):
                 "solv_en": _texto(i, "int_solv_en"), "pvalue": _texto(i, "pvalue"),
                 "n_hbonds": _texto(i.find("h-bonds"), "n_bonds") if i.find("h-bonds") is not None else "",
                 "n_saltbridges": _texto(i.find("salt-bridges"), "n_bonds") if i.find("salt-bridges") is not None else "",
+                # per-molecule interface stats (mol order == chain_1/chain_2 order)
+                "nres_1": _texto(m1, "int_nres"), "natoms_1": _texto(m1, "int_natoms"),
+                "area_1": _texto(m1, "int_area"), "solv_en_1": _texto(m1, "int_solv_en"),
+                "nres_2": _texto(m2, "int_nres"), "natoms_2": _texto(m2, "int_natoms"),
+                "area_2": _texto(m2, "int_area"), "solv_en_2": _texto(m2, "int_solv_en"),
             })
+        # assembly-level energetics: run the assembly xml too (already computed by
+        # -analyse) and keep every assembly; the pep-pro row later picks the assembly
+        # whose composition == {pep_chain, prot_chain} (validated on 1A1M-C-A).
+        assemblies = []
+        arc, aout = _pisa_run([pisa_bin, session, "-xml", "assemblies", cfg], timeout)
+        if arc == 0:
+            try:
+                aroot = ET.fromstring(aout)
+                for a in aroot.iter("assembly"):
+                    assemblies.append({
+                        "composition": _texto(a, "composition"),
+                        "diss_energy": _texto(a, "diss_energy"),
+                        "entropy": _texto(a, "entropy"),
+                        "asa": _texto(a, "asa"), "bsa": _texto(a, "bsa"),
+                        "diss_area": _texto(a, "diss_area"),
+                        "int_energy": _texto(a, "int_energy"),
+                    })
+            except ET.ParseError:
+                assemblies = []          # richer fields blank; interface fields still fine
         return {"assembly_done": assembly, "n_interfaces": len(interfaces),
-                "interfaces": rows}, ("ok" if rows else "no_interface")
+                "interfaces": rows, "assemblies": assemblies}, ("ok" if rows else "no_interface")
     except _Timeout:
         return None, "timeout"          # persisted: recorded, never retried/re-hung
     except ET.ParseError as e:
@@ -173,6 +209,19 @@ def cross(pep, prot, record):
     if not matches:
         return None
     return max(matches, key=lambda f: _fnum(f.get("area")))
+
+
+def find_assembly(assemblies, pep, prot):
+    """Pick the assembly for the pep-pro pair: the one whose chain composition equals
+    {pep, prot}. PISA's `composition` concatenates chain ids (e.g. 'AC'); matched by
+    sorted characters, which is exact for single-char chains (>99% of the PDB) and
+    degrades to no-match (blank richer fields) for the rare multi-char-chain case.
+    Returns the assembly dict, or None."""
+    want = "".join(sorted(pep + prot))
+    for a in assemblies or []:
+        if "".join(sorted(a.get("composition", ""))) == want:
+            return a
+    return None
 
 
 def _css_val(iface):
@@ -278,6 +327,12 @@ def main():
                 for k in IFACE_FIELDS:
                     row["pisa_" + k] = iface.get(k, "")
                 ok += 1
+            if status == "ok":
+                asm = find_assembly((rec or {}).get("assemblies"),
+                                    r["pep_chain"], r["prot_chain"])
+                if asm:
+                    for k in ASM_FIELDS:
+                        row["pisa_" + k] = asm.get(k, "")
             row["pisa_interface_class"] = classify(status, iface, css_threshold)
             classes[row["pisa_interface_class"] or "blank"] = \
                 classes.get(row["pisa_interface_class"] or "blank", 0) + 1
