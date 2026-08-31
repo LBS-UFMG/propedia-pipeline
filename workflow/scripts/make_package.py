@@ -19,6 +19,8 @@ import os
 import shutil
 import sys
 
+from cif_web import add_auth_atom_comp
+
 
 def _clear_make(d):
     if os.path.isdir(d):
@@ -213,7 +215,12 @@ def layout_structures(cif_dir, out_dir, ids, ext_out=".cif"):
             continue
         shard = os.path.join(out_dir, eid[0])
         os.makedirs(shard, exist_ok=True)
-        shutil.copy2(src, os.path.join(shard, f"{eid}{ext_out}"))
+        with open(src) as fh:
+            text = fh.read()
+        # add auth_atom_id/auth_comp_id so the site's 3Dmol viewer can read atom
+        # names and compute secondary structure (see cif_web.add_auth_atom_comp)
+        with open(os.path.join(shard, f"{eid}{ext_out}"), "w") as ofh:
+            ofh.write(add_auth_atom_comp(text))
         n += 1
     return n, missing
 
