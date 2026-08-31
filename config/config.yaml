@@ -121,6 +121,12 @@ package:
   peppro_csv_name: "propedia26_v17.csv"
   multipro_csv_name: "multipro_v5.csv"
   explore_tsv_name: "propedia26_v17.tsv"
+  # Bulk-download ZIP names (`snakemake zips`). The Download page serves the peptide
+  # and multipro structure zips from data/db/; propedia27-beta labels the multipro
+  # PDB zip v7. The pep-pro complexes zip (peppro) is offloaded to Zenodo, not the
+  # server, so its local name is irrelevant here.
+  zip_names:
+    multipro: "multipro_v7.zip"
   column_order_multipro: ""        # none needed: multipro_final.csv is ALREADY in the site's
                                    # v4 per-entry order (verified: our V4_ORDER == web v4
                                    # header); our 4 additive cols trail [64..67] and the site
