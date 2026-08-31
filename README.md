@@ -301,10 +301,13 @@ external-tool versions that produced it (see §4, "Cutting a release").
 4. **Open (paper-revision items):** surface the ML performance in the main report, and
    justify / offer alternatives for the selection cutoffs.
 
-**Known caveat that explains most discrepancies:** the reference DB counts terminal
-cap / modified residues as `X`; this pipeline counts only standard amino acids. This
-affects ~17% of peptide sequences and propagates identically into contacts and clustering.
-All metrics independent of it match ~100%. This is a deliberate, documented convention.
+**Sequence convention (matches the reference DB):** sequences include every polymer
+residue, with terminal caps / modified residues written as `X` — the same convention as
+the reference DB (v15). Membership comes from the mmCIF `_atom_site.label_seq_id`
+(polymer residues only; waters/ligands/ions excluded). An earlier revision counted only
+standard amino acids, which caused a ~17% peptide-sequence gap; that is now resolved
+(~100% match). Metrics computed from the standard residues only (physicochemistry, iFeature,
+ML) are unaffected — they strip `X` regardless.
 
 ---
 

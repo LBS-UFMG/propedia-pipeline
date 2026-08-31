@@ -26,9 +26,11 @@ Exact/within-tolerance match:
   GRAVY (±0.01):      644/644 (100%)
   Instability (±0.5): 644/644 (100%)
   Aliphatic (±0.5):   644/644 (100%)
-Note: physicochemistry matches 644/644 even where sequence match was 532/644,
-because non-standard placeholder residues (X) are stripped before analysis and
-do not affect computed properties. Confirms the 17% sequence gap is cosmetic.
+Note: physicochemistry matched 644/644 even where the sequence match was 532/644
+(under the earlier strip-X revision), because non-standard placeholder residues (X)
+are stripped before analysis and do not affect computed properties. The sequence gap
+has since been closed by restoring v15's X padding (see the X-convention section); the
+point stands that physicochemistry is independent of it.
 
 ## Interaction energy (PRODIGY 2.4.0) — REPRODUCED
 Sample: 642 pairs compared to v15. Within tolerance:
@@ -76,10 +78,13 @@ entry ID and MUST join by ID, never row position. Validation pending (no ref fil
 
 ## Clustering — CNR REPRODUCED (modulo documented convention); finer clusters deferred
 CNR (seq100_clusters): group by identical peptide sequence. Algorithm reproduces v15
-exactly. On sample: 256 groups (ours) vs 266 (v15). ALL 28 boundary differences are
-attributable to the peptide-sequence X-convention from the extraction stage: v15
-includes terminal cap/modified residues as X, we strip them, so v15 splits some groups
-we merge (verified: v15_seq.replace('X','') == our_seq for every mismatched member).
+exactly. On sample (measured under the EARLIER strip-X revision): 256 groups (ours) vs
+266 (v15). ALL 28 boundary differences were attributable to the peptide-sequence
+X-convention: back then v15 included terminal cap/modified residues as X while we
+stripped them (verified: v15_seq.replace('X','') == our_seq for every mismatched
+member). **This is now RESOLVED** — extraction restores v15's X padding
+(`polymer_set`), so peptides carry the same X's as v15 and these boundary splits close;
+grouping now matches v15 (re-measure on the next full run).
 NOTE: seq100_clusters representative LABELS are DB-global (chosen across all members),
 so exact label strings require the full dataset; grouping STRUCTURE validated on sample.
 DEFERRED: is_leader/leader_id is a FINER sub-clustering within CNR groups (multiple
@@ -87,10 +92,13 @@ leaders per seq-cluster -> structural/interface criterion, not reproduced tonigh
 Legacy sequence/binding/interface-cluster (Hammock/ProBiS/MUSTANG) need external tools.
 
 ## KEY REPRODUCTION FINDING
-Every discrepancy across ALL stages traces to ONE documented cause: the extraction
-convention for terminal cap/modified residues (counted as X in v15, stripped by us).
-This affects ~17% of peptide sequences and propagates identically into contacts and
-CNR clustering. All geometry/energy/physicochemistry metrics independent of it match ~100%.
+The near-entirety of the earlier peptide-sequence discrepancy traced to ONE cause: the
+extraction convention for terminal cap/modified residues. The earlier revision counted
+only standard amino acids while v15 kept caps/modified residues as X — a ~17% gap that
+propagated identically into contacts and CNR clustering (geometry/energy/physicochemistry
+metrics, which strip X, matched ~100% throughout). **RESOLVED:** extraction now restores
+v15's convention (`extract_pairs.polymer_set` keeps polymer residues, non-standard -> X),
+so the sequences match v15 (~100% expected on the next full run).
 
 ## ML therapeutic classifiers — REPRODUCED (method), 6 classes x 6 algorithms
 Features: iFeature 1248-vector. Training data: signa cs4 case-study sets
@@ -163,7 +171,10 @@ collapses on both sides (5.5 A -> 11.7%, 6.05 A -> 69.5%, 6.5 A -> 10.0%), so ou
 cutoff to adopt. The mismatches split as:
   - ~38 pep_shorter: v15 peptide includes non-AA cap/statine/ligand residues
     (e.g. 1APT/1APU/1APV/1APW) whose atoms reach protein residues our AA-only
-    peptide does not — the same terminal-X convention as the sequence stage.
+    peptide does not. NOTE: the SEQUENCE stage now keeps these as X (v15 padding
+    restored), but interface residues are computed from the extracted per-pair cif,
+    which still stores `is_aa` residues (`PairSelect`) — so this ~9% interface
+    residual persists until/unless `PairSelect` is also padded.
   - ~10 extra_only: v15 excludes a few high-numbered modified protein residues we
     keep (e.g. 1AQC, 1AWT) — mirror image, same non-standard-residue family.
   - a few equal-size cases (1AB9, 1B3F, 1C5W/X, 1CM4, 1CWE) where every residue
@@ -220,7 +231,8 @@ match vs v15 (incl. the U+02DA degree glyph). Column alignment on the 644 v15
 overlap: PDB_ID / chains / CLASSIFICATION / DEPOSITION_DATE / RESOLUTION /
 STRUCTURE_METHOD / TITLE / peptide+protein Formula & TotalAtoms all 100%;
 organism 98.6% (documented v15 quirks); SEQ/SIZE 82.6% peptide / 95.8% protein
-(terminal-X convention). ML classes (AAP/ABP/ACP/AIP/QSP/SBP) and legacy clusters
+(measured under the earlier strip-X revision; now ~100% with v15 X padding restored).
+ML classes (AAP/ABP/ACP/AIP/QSP/SBP) and legacy clusters
 (binding-/interface-/sequence-cluster, is_leader, leader_id) intentionally blank
 pending their stages. seq100_clusters grouping is reproduced but its labels are
 DB-global, so that column validates on the full run, not the sample. 648 vs 644
@@ -413,11 +425,15 @@ statement:
   sample): the X-difference never splits or merges a cluster.
 - Physicochemistry, surface (r=1.000), and PRODIGY are unaffected (all ~100%).
 
-**Decision:** do NOT reverse-engineer v15's exact X-pattern. It is cosmetic
-annotation with no structural or scientific effect; the pipeline reports the
-amino-acid backbone with modified residues flagged per current Biopython. This is
-a documented convention difference, not a defect — the peptide identity is
-reproduced exactly.
+**Decision (updated 2026-08-31):** RESTORE v15's X padding. Terminal cap / modified
+residues are kept in the sequence as `X`, matching v15 exactly, via
+`extract_pairs.polymer_set()` (polymer membership from `_atom_site.label_seq_id`).
+Rationale: although the X's carry no structural/scientific effect (metrics that need
+them — physicochemistry, iFeature, ML — strip X regardless), the peptide sequence
+identity should match the reference DB for continuity and clean cross-version
+comparison. Downstream stays correct: X-stripping stages are unaffected, and
+sequence-keyed grouping (CNR/seq100) now aligns with v15. Only the SEQUENCE carries the
+padding — the extracted per-pair cif still stores `is_aa` residues (`PairSelect`).
 
 **How to verify:** strip `X` from both `pep_seq` and v15 `PEPTIDE_SEQ`, compare;
 expect ~100% equality. (Comparing raw sequences understates fidelity badly.)

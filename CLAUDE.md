@@ -82,10 +82,15 @@ paths, CIF dir, oracle CSVs). Everything else is pipeline science — don't chan
   (biological / crystal-packing) comes from PISA's CSS vs `pisa.css_biological_threshold` (0.5),
   applied at MERGE time so re-labeling never re-runs PISA. This annotation answers the reviewer
   concern about crystal-packing artifacts.
-- **X-residue convention.** Extraction counts only standard amino acids; v15 counts terminal
-  caps/modified residues as `X`. This yields a documented ~17% peptide-sequence difference that
-  propagates into contacts/CNR clusters. All geometry- and chemistry-based metrics still match
-  ~100%. Expect ~69% sequence match in the report — that's this, not a bug.
+- **X-residue convention (v15-style, restored).** Sequences include every **polymer** residue —
+  terminal caps and modified residues become `X`, matching v15. `extract_pairs.polymer_set()`
+  reads polymer membership from `_atom_site.label_seq_id` (numeric = polymer; `.`/`?` =
+  water/ligand/ion, excluded); `modeled_aa` keeps those (falling back to the amino-acid test only
+  when a cif has no `label_seq_id`). Earlier versions dropped caps (`is_aa`), which caused a
+  documented ~17% peptide-sequence gap and ~69% report match; that is now ~100%. Note: only the
+  SEQUENCE path carries the caps — the extracted per-pair cif still writes `is_aa` residues
+  (`PairSelect`), so `PEPTIDE_SIZE`/seq (padded) do not equal the cif's residue count (harmless;
+  nothing indexes seq against cif). The size filter (`pep 2–50`) applies to the padded length.
 - **`--config` values arrive as strings** when overriding nested keys; cast (e.g. `int(...)`) —
   see `build_sample.py`.
 - **Structure size gate (`cutoffs.max_atoms_per_structure`)** is a MEMBERSHIP filter, not a
