@@ -4,6 +4,8 @@ Emits the per-entry layout the web app serves (see docs/propedia26_publishing.md
   <web>/data/<mode>/csv/<id[0]>/<id>.csv            per-entry row (;-delimited, no header)
   <web>/data/<mode>/contacts/<id>/<PDB>_contacts.csv per-entry COCaDA contacts
   <web>/data/<mode>/multipro/csv/<id[0]>/<id>.csv    per-entry multipro row
+  <web>/data/<mode>/pdb/<id[0]>/<id>.cif             per-entry complex structure (mmCIF)
+  <web>/data/<mode>/multipro/pdb/<id[0]>/<id>.cif    per-entry multipro complex (mmCIF)
   <web>/data/clusters/*.tsv                          cluster tables (copied)
   <web>/columns_peppro.txt / columns_multipro.txt    the column ORDER (manifest)
 
@@ -190,6 +192,32 @@ def package_multipro_contacts(mp_cocada_dir, out_dir, cluster_ids):
     return n
 
 
+def layout_structures(cif_dir, out_dir, ids, ext_out=".cif"):
+    """Shard the per-entry complex structures into the site's structure tree:
+        <out_dir>/<id[0]>/<id><ext_out>
+    Source is the pipeline's lossless mmCIF (`<cif_dir>/<id>.cif`). The web app
+    serves these under data/<mode>/pdb/ (pep-pro) and data/<mode>/multipro/pdb/
+    (multipro). We emit mmCIF (`.cif`) — the site's structure viewer reads mmCIF.
+
+    No silent loss (mirrors make_zips.py): every id whose source CIF is absent is
+    collected and returned so the caller can WARN and record it. Returns
+    (n_copied, missing_ids)."""
+    _clear_make(out_dir)
+    cif_dir = os.path.expanduser(cif_dir)
+    n = 0
+    missing = []
+    for eid in ids:
+        src = os.path.join(cif_dir, f"{eid}.cif")
+        if not os.path.exists(src):
+            missing.append(eid)
+            continue
+        shard = os.path.join(out_dir, eid[0])
+        os.makedirs(shard, exist_ok=True)
+        shutil.copy2(src, os.path.join(shard, f"{eid}{ext_out}"))
+        n += 1
+    return n, missing
+
+
 def copy_clusters(legacy_dir, out_dir):
     """Copy the cluster tables the site's Clusters page reads. What we have comes
     from the inherited legacy clusters; therapeutic-class lists (AAP..SBP) and
@@ -233,6 +261,21 @@ def main():
                                         os.path.join(base, "multipro", "contacts"),
                                         mp_ids)
 
+    # --- per-entry structure trees (pep-pro + multipro), the site's 3D viewer ---
+    # Emit only when a source CIF dir is configured (keeps package usable without
+    # shipping structures). Structures are the lossless mmCIF from state/<mode>/.
+    struct_subdir = getattr(p, "structure_subdir", "pdb")
+    n_pdb = n_mppdb = 0
+    miss_pdb, miss_mppdb = [], []
+    cif_dir = getattr(p, "cif_dir", "") or ""
+    mp_cif_dir = getattr(p, "multipro_cif_dir", "") or ""
+    if cif_dir:
+        n_pdb, miss_pdb = layout_structures(
+            cif_dir, os.path.join(base, struct_subdir), ids)
+    if mp_cif_dir:
+        n_mppdb, miss_mppdb = layout_structures(
+            mp_cif_dir, os.path.join(base, "multipro", struct_subdir), mp_ids)
+
     # --- Explore summary TSV (pep-pro): data/<explore_tsv_name>, read by fixed index ---
     explore_name = getattr(p, "explore_tsv_name", "propedia26_v17.tsv")
     n_expl = build_explore_tsv(snakemake.input.propedia,                 # noqa: F821
@@ -268,9 +311,20 @@ def main():
         fh.write(f"peppro_csv={n_csv} contacts={n_con} multipro_csv={n_mp} "
                  f"multipro_contacts={n_mpcon} explore_tsv={n_expl} "
                  f"peptides_fasta={n_pepf} receptors_fasta={n_recf} "
+                 f"pdb={n_pdb} multipro_pdb={n_mppdb} "
                  f"clusters={len(clusters)}\n")
+        if miss_pdb:
+            fh.write(f"WARNING: {len(miss_pdb)} pep-pro entries have NO complex "
+                     f"CIF in {cif_dir} (structure tree incomplete)\n")
+        if miss_mppdb:
+            fh.write(f"WARNING: {len(miss_mppdb)} multipro entries have NO complex "
+                     f"CIF in {mp_cif_dir} (structure tree incomplete)\n")
     print(f"PACKAGED -> {base}\n  per-entry csv: {n_csv}\n  contacts: {n_con}\n"
           f"  multipro csv: {n_mp}\n  multipro contacts: {n_mpcon}\n"
+          f"  structures ({struct_subdir}/.cif): pep-pro={n_pdb}"
+          + (f" (MISSING {len(miss_pdb)})" if miss_pdb else "")
+          + f", multipro={n_mppdb}"
+          + (f" (MISSING {len(miss_mppdb)})" if miss_mppdb else "") + "\n"
           f"  master csv: data/{peppro_csv_name}, data/{multipro_csv_name}\n"
           f"  explore tsv: {n_expl} rows -> data/{explore_name}\n"
           f"  blast fasta: peptides={n_pepf} receptors={n_recf} -> data/*.fasta\n"

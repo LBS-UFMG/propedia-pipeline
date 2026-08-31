@@ -16,6 +16,10 @@ rule package:
         web_dir               = WEB,
         cocada_dir            = f"{STATE}/cocada",
         multipro_cocada_dir   = f"{STATE}/multipro_cocada",
+        # per-entry complex structures (lossless mmCIF) -> the site's 3D-viewer tree
+        cif_dir               = f"{STATE}/cif",
+        multipro_cif_dir      = f"{STATE}/multipro_cif",
+        structure_subdir      = config.get("package", {}).get("structure_subdir", "pdb"),
         legacy_dir            = config["clusters"]["legacy_dir"],
         # optional: a file of target column names -> permutes to the site's order
         column_order          = config.get("package", {}).get("column_order", ""),
