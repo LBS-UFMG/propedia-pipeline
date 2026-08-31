@@ -114,6 +114,13 @@ package:
   # fields) fall through to blank. Derived+validated against the web repo's shipped
   # propedia26_v17.csv + examples/csv/1/1WRZ-B-A.csv.
   column_order: "config/columns_peppro_v17.txt"
+  # Master bulk-download filenames at data/ root. These MUST match the site's
+  # hardcoded links: the Explore table + Entry PISA-CSS read the .tsv; Blast reads
+  # peptides.fasta/receptors.fasta; the Download page links these .csv/.zip names.
+  # (propedia27-beta bumped the multipro master to v5; pep-pro stays v17.)
+  peppro_csv_name: "propedia26_v17.csv"
+  multipro_csv_name: "multipro_v5.csv"
+  explore_tsv_name: "propedia26_v17.tsv"
   column_order_multipro: ""        # none needed: multipro_final.csv is ALREADY in the site's
                                    # v4 per-entry order (verified: our V4_ORDER == web v4
                                    # header); our 4 additive cols trail [64..67] and the site
