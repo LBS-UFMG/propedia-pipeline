@@ -1,3 +1,16 @@
+# ---- pin BLAS / OpenMP to one thread per worker ----
+# The heavy per-entry stages run a pool of `compute.threads` worker PROCESSES. numpy's
+# BLAS backend (OpenBLAS/MKL) would otherwise spawn several threads PER worker, so N
+# workers demand N×~4 cores and thrash the machine (observed: load ~178 on 64 physical
+# cores during cocada/prodigy/signa). Pinning to one BLAS thread makes parallelism come
+# from the POOL, not from BLAS within a worker — exact core accounting, no oversubscription.
+# Set here (inherited by every rule's script subprocess BEFORE it imports numpy); this
+# covers the numpy-heavy stages (signa, ML, …). `setdefault` so an explicit user export wins.
+import os as _os
+for _blas_var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                  "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    _os.environ.setdefault(_blas_var, "1")
+
 configfile: "config/config.yaml"
 
 MODE  = config["mode"]
