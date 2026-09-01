@@ -15,7 +15,7 @@ sample:
   seed: 42        # seeded-random sample across all downloaded oracle IDs (reproducible)
 
 # ---- data snapshot ----
-pdb_snapshot_date: "2026-08-27"
+pdb_snapshot_date: "2026-08-30"
 
 # ---- selection / cutoffs ----
 # Defaults reproduce Propedia's published selection; each is justified in
