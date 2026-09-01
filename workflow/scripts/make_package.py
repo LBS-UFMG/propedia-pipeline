@@ -226,7 +226,8 @@ def layout_structures(cif_dir, out_dir, ids, ext_out=".cif"):
     return n, missing
 
 
-def build_home_stats(propedia_csv, multipro_csv, out_path, update_date=""):
+def build_home_stats(propedia_csv, multipro_csv, out_path, update_date="",
+                     snapshot_date=""):
     """Write the site's home-page counters file (data/pdb/total_contacts2.txt).
 
     Home::index (propedia27-beta) reads 5 lines, in this exact order:
@@ -234,7 +235,9 @@ def build_home_stats(propedia_csv, multipro_csv, out_path, update_date=""):
     'unique' is the seq-dedup count (distinct PROTEIN_SEQ+PEPTIDE_SEQ), the site's
     documented redundancy methodology; 'total' = pep-pro + multipro. Without this file
     the site shows hardcoded defaults, so emitting it keeps the home stats in sync with
-    every build. `update_date` defaults to today ("Mon D, YYYY", e.g. Aug 31, 2026)."""
+    every build. The 'last updated' date (line 5) is the PDB SNAPSHOT date — when the
+    structures were taken from the PDB — formatted "Mon D, YYYY" (e.g. Aug 27, 2026); an
+    explicit `update_date` overrides it, and today is used only if neither is given."""
     peppro, seen = 0, set()
     with open(propedia_csv) as fh:
         for r in csv.DictReader(fh, delimiter=";"):
@@ -244,7 +247,10 @@ def build_home_stats(propedia_csv, multipro_csv, out_path, update_date=""):
     multipro = max(0, sum(1 for _ in open(multipro_csv)) - 1)   # minus header
     total = peppro + multipro
     if not update_date:
-        d = datetime.date.today()
+        try:                                # PDB snapshot date (structures' "as of" date)
+            d = datetime.date.fromisoformat(str(snapshot_date))
+        except (ValueError, TypeError):
+            d = datetime.date.today()       # fallback only if no snapshot date configured
         update_date = f"{d.strftime('%b')} {d.day}, {d.year}"
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as fh:
@@ -337,7 +343,8 @@ def main():
     # --- home-page counters: data/pdb/total_contacts2.txt (Home::index reads it) ---
     stats = build_home_stats(snakemake.input.propedia, snakemake.input.multipro,  # noqa: F821
                              os.path.join(web, "data", "pdb", "total_contacts2.txt"),
-                             getattr(p, "update_date", ""))
+                             getattr(p, "update_date", ""),
+                             getattr(p, "pdb_snapshot_date", ""))
 
     # --- clusters (shared across modes) ---
     clusters = copy_clusters(p.legacy_dir, os.path.join(web, "data", "clusters"))

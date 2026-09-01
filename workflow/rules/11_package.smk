@@ -23,8 +23,9 @@ rule package:
         # web subdir the site serves from ($modo='db'); blank -> the run mode. Set 'db'
         # so the packaged tree deploys as a pure rsync (no <mode>->db rename).
         web_mode_name         = config.get("package", {}).get("web_mode_name", ""),
-        # home-page "last updated" string; blank -> the packager stamps today's date
+        # home-page "last updated" string; blank -> the PDB snapshot date (below)
         update_date           = config.get("package", {}).get("update_date", ""),
+        pdb_snapshot_date     = config.get("pdb_snapshot_date", ""),
         legacy_dir            = config["clusters"]["legacy_dir"],
         # optional: a file of target column names -> permutes to the site's order
         column_order          = config.get("package", {}).get("column_order", ""),
