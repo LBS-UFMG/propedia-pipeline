@@ -84,11 +84,16 @@ def run_one(args):
             return None, f"no_polymer_label:{','.join(sorted(set(missing)))}"
         if len(labels) < 2:                           # need >=2 chains for interchain
             return None, "too_few_chains"
+        # Pin numpy's OpenBLAS to ONE thread per subprocess (see run_cocada.py):
+        # parallelism is the pool across entries, not BLAS within one cocada.py.
+        # Prevents the 32-worker pool from oversubscribing the box to ~96 cores.
+        env = dict(os.environ, OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1",
+                   MKL_NUM_THREADS="1", NUMEXPR_NUM_THREADS="1")
         proc = subprocess.run(
             ["python3", "cocada.py", "-f", tmp.name,
              "-c", ",".join(labels), "-inter", "-m", "1",
              "-o", entry_out, "-ph", str(ph), "-s"],
-            cwd=cocada_dir, capture_output=True, text=True, timeout=600)
+            cwd=cocada_dir, capture_output=True, text=True, timeout=600, env=env)
         produced = [f for f in os.listdir(entry_out) if f.endswith("_contacts.csv")]
         if not produced:
             err = (proc.stderr or proc.stdout or "").strip().splitlines()

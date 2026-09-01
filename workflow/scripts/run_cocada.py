@@ -77,11 +77,18 @@ def run_one(args):
         if pep_lab is None or prot_lab is None:
             missing = [c for c, lab in ((pep, pep_lab), (prot, prot_lab)) if lab is None]
             return None, f"no_polymer_label:{','.join(missing)}"
+        # Pin numpy's OpenBLAS to ONE thread per subprocess. COCaDA does small
+        # per-structure linear algebra; without this, OpenBLAS fans each cocada.py
+        # out to ~3 cores, so a 32-worker pool demands ~96 cores and oversubscribes
+        # the box (load >> ncpu). Parallelism comes from the POOL across pairs, not
+        # from BLAS within one pair. Same numeric result, exact core accounting.
+        env = dict(os.environ, OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1",
+                   MKL_NUM_THREADS="1", NUMEXPR_NUM_THREADS="1")
         proc = subprocess.run(
             ["python3", "cocada.py", "-f", tmp.name,
              "-c", f"{pep_lab},{prot_lab}", "-inter", "-m", "1",
              "-o", entry_out, "-ph", str(ph), "-s"],
-            cwd=cocada_dir, capture_output=True, text=True, timeout=300)
+            cwd=cocada_dir, capture_output=True, text=True, timeout=300, env=env)
         produced = [f for f in os.listdir(entry_out) if f.endswith("_contacts.csv")]
         if not produced:
             return None, "no_output"
