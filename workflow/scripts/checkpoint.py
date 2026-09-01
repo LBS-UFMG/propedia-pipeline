@@ -50,7 +50,12 @@ def _one_isolated(worker, it):
         except Exception as exc:                               # noqa: BLE001
             return None, f"retry:exc:{exc}"
     finally:
-        ex.shutdown(wait=False, cancel_futures=True)
+        # wait=True DRAINS the pool's worker process + management thread before we
+        # move on. With wait=False they linger undrained, and the interpreter's
+        # concurrent.futures atexit handler then blocks forever joining them at exit
+        # (a hang that only shows AFTER the stage's work is done). A broken pool's
+        # workers are already dead, so this still returns promptly.
+        ex.shutdown(wait=True, cancel_futures=True)
 
 
 def _isolate(worker, pending):
@@ -83,7 +88,10 @@ def _run_chunk(worker, chunk, threads):
     except BrokenProcessPool:
         return done, True
     finally:
-        ex.shutdown(wait=False, cancel_futures=True)
+        # wait=True so no undrained worker/management thread survives to the
+        # interpreter's atexit join (see _one_isolated). A crashed pool is already
+        # dead here, so draining is immediate.
+        ex.shutdown(wait=True, cancel_futures=True)
 
 
 def namespace(base_dir, version, params):
