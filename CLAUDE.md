@@ -25,7 +25,9 @@ snakemake --cores <N> --config mode=full site    # ONE-COMMAND production build:
                                        #   packaged web tree (data/db/…) + bulk zips, ready to rsync
 scripts/deploy_site.sh user@host:/…/public/data  # PURE TRANSFER of the `site` tree (dest never
                                        #   hardcoded; also honors $PROPEDIA_DEPLOY_DEST; -n = dry run)
-snakemake --cores 8 --config mode=full release   # dated immutable release snapshot
+snakemake --cores 8 release --config mode=full   # dated immutable release snapshot
+                                       #   (target BEFORE --config; Snakemake reads any word
+                                       #    after --config as a name=value config entry)
 snakemake --unlock                     # after any hard-killed run, before resuming
 python -m py_compile workflow/scripts/<x>.py      # there is no unit-test suite; this + the
 python tests/smoke_test_pisa.py --ccp4-dir <ccp4> # PISA smoke test are the checks
