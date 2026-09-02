@@ -104,8 +104,14 @@ class _Timeout(Exception):
 def _pisa_run(cmd, timeout):
     """Run a pisa command in its own process group and, on timeout, SIGKILL the whole
     group (CCP4 pisa spawns children that outlive a plain kill -> orphan pile-up)."""
+    # errors="replace": PISA emits occasional non-UTF-8 bytes (e.g. 0x81, CP-1252) in
+    # text fields; strict decoding raised UnicodeDecodeError -> caught as a transient
+    # 'retry:exc' that never self-heals (deterministic) and silently blanked PISA for
+    # ~3.7k X-ray entries. A replaced byte only ever lands in a text field, never in the
+    # numeric interface/assembly values we parse.
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, start_new_session=True)
+                            text=True, encoding="utf-8", errors="replace",
+                            start_new_session=True)
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, (out or "") + (err or "")
