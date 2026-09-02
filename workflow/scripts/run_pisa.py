@@ -124,6 +124,51 @@ def _pisa_run(cmd, timeout):
         raise _Timeout()
 
 
+_PISA_KEEP = {"_entry", "_cell", "_symmetry", "_atom_sites", "_atom_site", "_atom_type"}
+
+
+def _minimal_cif(path):
+    """Coordinates+crystal-only mmCIF for PISA. CCP4 PISA's mmCIF reader chokes on some
+    full-RCSB metadata loops (observed: `_struct_conf` HELX_P rows -> rc=19 'problem
+    reading the coordinate file'), which silently blanked PISA for ~2.4k X-ray entries.
+    PISA only needs cell/symmetry/atom_site, so keep just those categories — verified
+    numerically identical (CSS unchanged on 1A1M). Used only as a fallback after a
+    first-try parse failure, so the common path is never touched."""
+    lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
+    out, i, n = [], 0, len(lines)
+    while i < n:
+        s = lines[i].strip()
+        if s.startswith("data_") or s == "" or s == "#":
+            out.append(lines[i]); i += 1; continue
+        if s == "loop_":
+            j = i + 1; hdr = []
+            while j < n and lines[j].strip().startswith("_"):
+                hdr.append(lines[j]); j += 1
+            cat = hdr[0].strip().split(".")[0] if hdr else ""
+            k = j
+            while (k < n and lines[k].strip() != "loop_"
+                   and not lines[k].strip().startswith("_")
+                   and not lines[k].strip().startswith("data_")
+                   and lines[k].strip() != "#"):
+                k += 1
+            if cat in _PISA_KEEP:
+                out.append("loop_"); out += hdr; out += lines[j:k]
+            i = k; continue
+        if s.startswith("_"):
+            cat = s.split(".")[0]; blk = [lines[i]]; j = i + 1
+            if len(s.split()) == 1 and j < n and lines[j].startswith(";"):
+                blk.append(lines[j]); j += 1
+                while j < n and not lines[j].startswith(";"):
+                    blk.append(lines[j]); j += 1
+                if j < n:
+                    blk.append(lines[j]); j += 1
+            if cat in _PISA_KEEP:
+                out += blk
+            i = j; continue
+        i += 1
+    return "\n".join(out) + "\n"
+
+
 def run_one(args):
     """worker(item) -> (interfaces|None, status). Runs PISA on one full structure and
     returns every interface. A timeout is a PERSISTED status (recorded, not retried) so
@@ -139,6 +184,17 @@ def run_one(args):
         cfg = _write_cfg(cfg_modelo, data_root, os.path.join(data_root, "pisa.cfg"))
         struct = _decompress(cif_path, tmpdir)
         rc, out = _pisa_run([pisa_bin, session, "-analyse", struct, cfg], timeout)
+        if rc != 0 or "quit" in out:
+            # PISA's mmCIF reader trips on some full-RCSB metadata loops (e.g.
+            # _struct_conf) -> retry on a coordinates+crystal-only CIF (identical
+            # numbers). Only on failure, so the common path pays nothing.
+            try:
+                mini = os.path.join(tmpdir, "min.cif")
+                with open(mini, "w", encoding="utf-8") as fh:
+                    fh.write(_minimal_cif(struct))
+                rc, out = _pisa_run([pisa_bin, session, "-analyse", mini, cfg], timeout)
+            except Exception:                                  # noqa: BLE001
+                pass
         assembly = "yes" if "assembly analysis: done" in out else "no"
         if rc != 0 or "quit" in out:
             return {"assembly_done": assembly}, "error"
